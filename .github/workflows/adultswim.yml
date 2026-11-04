@@ -11,7 +11,7 @@ on:
         default: false
 
 concurrency:
-  group: adultswim-m3u-epg
+  group: adultswim
   cancel-in-progress: false
 
 permissions:
@@ -51,7 +51,7 @@ jobs:
           else
             EXTRA=""
           fi
-          python adultswim_m3u_epg.py \
+          python adultswim.py \
             --out-dir . \
             --m3u adultswim.m3u \
             --epg adultswim.xml \
