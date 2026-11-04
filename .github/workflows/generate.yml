@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa M3U + EPG
+name: Adult Swim + Vidaa + Cineverse M3U + EPG
 
 on:
   schedule:
@@ -85,14 +85,30 @@ jobs:
             -v \
             $EXTRA
 
+      - name: Run Cineverse scraper
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python cineverse.py \
+            --out-dir playlists \
+            --m3u cineverse.m3u \
+            --epg cineverse.xml \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
-          for f in playlists/adultswim.m3u playlists/vidaa.m3u; do
+          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/cineverse.m3u; do
             test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
             head -n 1 "$f" | grep -q '^#EXTM3U' \
               || { echo "::error::$f is not a valid M3U"; exit 1; }
           done
-          for f in playlists/adultswim.xml playlists/vidaa.xml; do
+          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/cineverse.xml; do
             if [ -f "$f" ]; then
               python - "$f" <<'PY'
           import sys, xml.etree.ElementTree as ET
@@ -115,7 +131,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Source | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          for src in adultswim vidaa; do
+          for src in adultswim vidaa cineverse; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
@@ -128,7 +144,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add playlists/adultswim.m3u playlists/adultswim.xml \
-                  playlists/vidaa.m3u playlists/vidaa.xml 2>/dev/null || true
+                  playlists/vidaa.m3u playlists/vidaa.xml \
+                  playlists/cineverse.m3u playlists/cineverse.xml 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
