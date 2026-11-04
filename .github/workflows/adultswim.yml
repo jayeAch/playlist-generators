@@ -2,24 +2,22 @@ name: Adult Swim M3U + EPG
 
 on:
   schedule:
-    # Every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC
     - cron: "0 */6 * * *"
-  workflow_dispatch:        # manual trigger from the Actions tab
+  workflow_dispatch:
     inputs:
       skip_epg:
         description: "Skip EPG generation (M3U only)"
         type: boolean
         default: false
 
-# Only one run at a time; queue rather than cancel so a slow run finishes.
 concurrency:
   group: adultswim-m3u-epg
   cancel-in-progress: false
 
 permissions:
-  contents: write           # needed to commit the generated files back
-  pages: write              # only needed if you enable the Pages job below
-  id-token: write           # only needed if you enable the Pages job below
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -30,7 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Keep a shallow clone; we don't need history for the script.
           fetch-depth: 1
           persist-credentials: true
 
@@ -43,12 +40,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # The script needs requests + beautifulsoup4 (bs4).
-          pip install requests beautifulsoup4
+          pip install -r requirements.txt
 
       - name: Run scraper
         env:
-          # Optional: bump verbosity for easier debugging in logs.
           PYTHONUNBUFFERED: "1"
         run: |
           if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
@@ -106,35 +101,9 @@ jobs:
           fi
 
           git commit -m "chore(adultswim): refresh M3U + EPG [skip ci]"
-          # Push with retry in case another workflow bumped the branch.
           for i in 1 2 3; do
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
             git push origin "HEAD:${GITHUB_REF_NAME}" && break
             echo "Push attempt $i failed, retrying…"
             sleep 5
           done
-
-      # ---- Optional: publish via GitHub Pages -----------------------------
-      # Enable this block if you want `https://<user>.github.io/<repo>/adultswim.m3u`
-      # to always serve the latest files. Requires enabling Pages in
-      # Settings → Pages → Source: GitHub Actions.
-      #
-      # - name: Prepare Pages artifact
-      #   run: |
-      #     mkdir -p _site
-      #     cp adultswim.m3u adultswim.xml _site/ 2>/dev/null || true
-      #
-      # - name: Upload Pages artifact
-      #   uses: actions/upload-pages-artifact@v3
-      #   with:
-      #     path: _site
-
-  # pages:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   environment:
-  #     name: github-pages
-  #     url: ${{ steps.deployment.outputs.page_url }}
-  #   steps:
-  #     - id: deployment
-  #       uses: actions/deploy-pages@v4
