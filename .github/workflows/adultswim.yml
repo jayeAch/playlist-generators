@@ -1,0 +1,140 @@
+name: Adult Swim M3U + EPG
+
+on:
+  schedule:
+    # Every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC
+    - cron: "0 */6 * * *"
+  workflow_dispatch:        # manual trigger from the Actions tab
+    inputs:
+      skip_epg:
+        description: "Skip EPG generation (M3U only)"
+        type: boolean
+        default: false
+
+# Only one run at a time; queue rather than cancel so a slow run finishes.
+concurrency:
+  group: adultswim-m3u-epg
+  cancel-in-progress: false
+
+permissions:
+  contents: write           # needed to commit the generated files back
+  pages: write              # only needed if you enable the Pages job below
+  id-token: write           # only needed if you enable the Pages job below
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Keep a shallow clone; we don't need history for the script.
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # The script needs requests + beautifulsoup4 (bs4).
+          pip install requests beautifulsoup4
+
+      - name: Run scraper
+        env:
+          # Optional: bump verbosity for easier debugging in logs.
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python adultswim_m3u_epg.py \
+            --out-dir . \
+            --m3u adultswim.m3u \
+            --epg adultswim.xml \
+            --workers 8 \
+            -v \
+            $EXTRA
+
+      - name: Sanity-check outputs
+        run: |
+          test -s adultswim.m3u || { echo "::error::adultswim.m3u is empty or missing"; exit 1; }
+          head -n 1 adultswim.m3u | grep -q '^#EXTM3U' \
+            || { echo "::error::adultswim.m3u is not a valid M3U"; exit 1; }
+          if [ -f adultswim.xml ]; then
+            python - <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          try:
+              tree = ET.parse("adultswim.xml")
+          except Exception as exc:
+              print(f"::error::adultswim.xml failed to parse: {exc}")
+              sys.exit(1)
+          root = tree.getroot()
+          print(f"XMLTV OK: {len(root.findall('channel'))} channels, "
+                f"{len(root.findall('programme'))} programmes")
+          PY
+          fi
+
+      - name: Show summary
+        run: |
+          echo "### Adult Swim refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Channels: \`$(grep -c '^#EXTINF' adultswim.m3u || echo 0)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- M3U size: \`$(wc -c < adultswim.m3u)\` bytes" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f adultswim.xml ]; then
+            echo "- EPG size: \`$(wc -c < adultswim.xml)\` bytes" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit updated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add adultswim.m3u adultswim.xml 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(adultswim): refresh M3U + EPG [skip ci]"
+          # Push with retry in case another workflow bumped the branch.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            echo "Push attempt $i failed, retrying…"
+            sleep 5
+          done
+
+      # ---- Optional: publish via GitHub Pages -----------------------------
+      # Enable this block if you want `https://<user>.github.io/<repo>/adultswim.m3u`
+      # to always serve the latest files. Requires enabling Pages in
+      # Settings → Pages → Source: GitHub Actions.
+      #
+      # - name: Prepare Pages artifact
+      #   run: |
+      #     mkdir -p _site
+      #     cp adultswim.m3u adultswim.xml _site/ 2>/dev/null || true
+      #
+      # - name: Upload Pages artifact
+      #   uses: actions/upload-pages-artifact@v3
+      #   with:
+      #     path: _site
+
+  # pages:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deployment.outputs.page_url }}
+  #   steps:
+  #     - id: deployment
+  #       uses: actions/deploy-pages@v4
