@@ -1,4 +1,4 @@
-name: Adult Swim M3U + EPG
+name: Adult Swim + Vidaa M3U + EPG
 
 on:
   schedule:
@@ -11,7 +11,7 @@ on:
         default: false
 
 concurrency:
-  group: adultswim
+  group: m3u-epg
   cancel-in-progress: false
 
 permissions:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -42,7 +42,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run scraper
+      - name: Restore Vidaa DRM cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vidaa_m3u_epg
+          key: vidaa-drm-${{ github.run_id }}
+          restore-keys: vidaa-drm-
+
+      - name: Run Adult Swim scraper
         env:
           PYTHONUNBUFFERED: "1"
         run: |
@@ -59,48 +66,72 @@ jobs:
             -v \
             $EXTRA
 
+      - name: Run Vidaa scraper
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python vidaa.py \
+            --out-dir . \
+            --m3u vidaa.m3u \
+            --epg vidaa.xml \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
-          test -s adultswim.m3u || { echo "::error::adultswim.m3u is empty or missing"; exit 1; }
-          head -n 1 adultswim.m3u | grep -q '^#EXTM3U' \
-            || { echo "::error::adultswim.m3u is not a valid M3U"; exit 1; }
-          if [ -f adultswim.xml ]; then
-            python - <<'PY'
+          for f in adultswim.m3u vidaa.m3u; do
+            test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
+            head -n 1 "$f" | grep -q '^#EXTM3U' \
+              || { echo "::error::$f is not a valid M3U"; exit 1; }
+          done
+          for f in adultswim.xml vidaa.xml; do
+            if [ -f "$f" ]; then
+              python - "$f" <<'PY'
           import sys, xml.etree.ElementTree as ET
+          path = sys.argv[1]
           try:
-              tree = ET.parse("adultswim.xml")
+              tree = ET.parse(path)
           except Exception as exc:
-              print(f"::error::adultswim.xml failed to parse: {exc}")
+              print(f"::error::{path} failed to parse: {exc}")
               sys.exit(1)
           root = tree.getroot()
-          print(f"XMLTV OK: {len(root.findall('channel'))} channels, "
+          print(f"{path}: {len(root.findall('channel'))} channels, "
                 f"{len(root.findall('programme'))} programmes")
           PY
-          fi
+            fi
+          done
 
       - name: Show summary
         run: |
-          echo "### Adult Swim refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Refresh summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Channels: \`$(grep -c '^#EXTINF' adultswim.m3u || echo 0)\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- M3U size: \`$(wc -c < adultswim.m3u)\` bytes" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f adultswim.xml ]; then
-            echo "- EPG size: \`$(wc -c < adultswim.xml)\` bytes" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "| Source | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          for src in adultswim vidaa; do
+            ch=$(grep -c '^#EXTINF' "$src.m3u" 2>/dev/null || echo 0)
+            m3u=$(wc -c < "$src.m3u" 2>/dev/null || echo 0)
+            epg=$([ -f "$src.xml" ] && wc -c < "$src.xml" || echo 0)
+            echo "| $src | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Commit updated files
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add adultswim.m3u adultswim.xml 2>/dev/null || true
+          git add adultswim.m3u adultswim.xml vidaa.m3u vidaa.xml 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
           fi
 
-          git commit -m "chore(adultswim): refresh M3U + EPG [skip ci]"
+          git commit -m "chore: refresh M3U + EPG [skip ci]"
           for i in 1 2 3; do
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
             git push origin "HEAD:${GITHUB_REF_NAME}" && break
