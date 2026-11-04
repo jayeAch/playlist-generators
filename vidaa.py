@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import logging
 import socket
@@ -40,7 +41,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 from xml.dom import minidom
 
 import requests
@@ -550,7 +551,53 @@ class VidaaScraper(BaseScraper):
 
 
 # ---------------------------------------------------------------------------
-# License proxy server (stdlib only)
+# DASH manifest filter (drops video renditions above a bitrate / height cap)
+# ---------------------------------------------------------------------------
+
+def filter_mpd(data: bytes, base_url: str, max_bps: int | None, max_height: int | None) -> bytes:
+    for _, (prefix, uri) in ET.iterparse(io.BytesIO(data), events=("start-ns",)):
+        try:
+            ET.register_namespace(prefix, uri)
+        except ValueError:
+            pass
+    root = ET.fromstring(data)
+    mpd_ns = root.tag.split("}")[0] + "}" if root.tag.startswith("{") else ""
+
+    def ok(rep) -> bool:
+        bw, h = int(rep.get("bandwidth") or 0), int(rep.get("height") or 0)
+        return (not max_bps or not bw or bw <= max_bps) and (not max_height or not h or h <= max_height)
+
+    removed = 0
+    for aset in root.iter(f"{mpd_ns}AdaptationSet"):
+        reps = aset.findall(f"{mpd_ns}Representation")
+        is_video = (aset.get("contentType") == "video"
+                    or "video" in (aset.get("mimeType") or "")
+                    or any("video" in (r.get("mimeType") or "") for r in reps))
+        if not is_video or not reps:
+            continue
+        keep = [r for r in reps if ok(r)] or [min(reps, key=lambda r: int(r.get("bandwidth") or 0))]
+        for r in reps:
+            if r not in keep:
+                aset.remove(r)
+                removed += 1
+
+    # Segment URLs resolve against the manifest's location; since we serve it from the
+    # proxy, make the MPD-level BaseURL absolute.
+    bases = root.findall(f"{mpd_ns}BaseURL")
+    if bases:
+        for b in bases:
+            b.text = urljoin(base_url, (b.text or "").strip())
+    else:
+        el = ET.Element(f"{mpd_ns}BaseURL")
+        el.text = urljoin(base_url, ".")
+        period = root.find(f"{mpd_ns}Period")
+        root.insert(list(root).index(period) if period is not None else 0, el)
+    logger.debug("[vidaa] manifest filter removed %d renditions", removed)
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+# ---------------------------------------------------------------------------
+# License / manifest proxy server (stdlib only)
 # ---------------------------------------------------------------------------
 
 def _make_handler(scraper: VidaaScraper):
@@ -574,10 +621,30 @@ def _make_handler(scraper: VidaaScraper):
             self._reply(204)
 
         def do_GET(self):
-            if self.path.rstrip("/") in ("", "/health"):
-                self._reply(200, b"vidaa license proxy ok\n", "text/plain")
-            else:
-                self._reply(404)
+            u = urlparse(self.path)
+            if u.path.rstrip("/") in ("", "/health"):
+                return self._reply(200, b"vidaa proxy ok\n", "text/plain")
+            parts = [p for p in u.path.split("/") if p]
+            if len(parts) == 2 and parts[0] == "manifest" and parts[1].endswith(".mpd"):
+                cid = parts[1][:-4]
+                q = parse_qs(u.query)
+                try:
+                    max_bps = int(float((q.get("max_mbps") or ["0"])[0]) * 1_000_000) or None
+                    max_h = int((q.get("max_height") or ["0"])[0]) or None
+                except ValueError:
+                    return self._reply(400)
+                params = cid.isdigit() and scraper._lookup_drm_params(cid)
+                if not params:
+                    return self._reply(502)
+                try:
+                    r = scraper.session.get(params["streaming_url"], timeout=15)
+                    r.raise_for_status()
+                    out = filter_mpd(r.content, r.url, max_bps, max_h)
+                except Exception as exc:
+                    logger.warning("[proxy] manifest %s failed: %s", cid, exc)
+                    return self._reply(502)
+                return self._reply(200, out, "application/dash+xml")
+            self._reply(404)
 
         def do_POST(self):
             parts = [p for p in urlparse(self.path).path.split("/") if p]
@@ -641,8 +708,13 @@ def _lan_ip() -> str:
 # M3U + XMLTV writers
 # ---------------------------------------------------------------------------
 
+_RES_TO_BPS = {"360p": 1_000_000, "480p": 1_800_000, "540p": 2_500_000,
+               "720p": 4_500_000, "1080p": 9_000_000}
+
+
 def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
-              license_base: str | None) -> None:
+              license_base: str | None, max_res: str | None = None,
+              manifest_qs: str | None = None, manifest_base: str | None = None) -> None:
     lines = ["#EXTM3U"]
     drm_count = 0
     for ch in channels:
@@ -681,7 +753,18 @@ def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
                 "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
                 f"#KODIPROP:inputstream.adaptive.license_key={key}",
             ]
-        lines.append(ch.stream_url)
+            if max_res:
+                # Honored by Kodi inputstream.adaptive; ExoPlayer apps (OTT Navigator,
+                # TiviMate) ignore these and use their own quality setting.
+                lines += [
+                    f"#KODIPROP:inputstream.adaptive.chooser_resolution_max={max_res}",
+                    f"#KODIPROP:inputstream.adaptive.chooser_resolution_secure_max={max_res}",
+                    f"#KODIPROP:inputstream.adaptive.max_bandwidth={_RES_TO_BPS[max_res]}",
+                ]
+        url = ch.stream_url
+        if is_drm and key and manifest_base:
+            url = f"{manifest_base}/manifest/{ch.source_channel_id}.mpd?{manifest_qs}"
+        lines.append(url)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     logger.info("Wrote %d channels (%d DRM, %s) to %s", len(channels), drm_count,
                 f"proxy {license_base}" if license_base else "license baked in", path)
@@ -738,6 +821,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--license-base", default=None,
                    help="Optional. Base URL of the --serve proxy (e.g. http://192.168.1.5:8765). "
                         "Default: no proxy; license URL + header are baked into the M3U")
+    p.add_argument("--max-res", choices=sorted(_RES_TO_BPS), default=None,
+                   help="Cap DRM stream resolution via Kodi inputstream.adaptive props")
+    p.add_argument("--max-mbps", type=float, default=None,
+                   help="Drop DRM video renditions above this bitrate (needs --manifest-base + --serve)")
+    p.add_argument("--max-height", type=int, default=None,
+                   help="Drop DRM video renditions taller than this, e.g. 720 (needs --manifest-base + --serve)")
+    p.add_argument("--manifest-base", default=None,
+                   help="Base URL of the --serve proxy used to serve filtered manifests, e.g. http://127.0.0.1:8765")
     p.add_argument("--serve", action="store_true",
                    help="Run the Widevine license proxy instead of generating files")
     p.add_argument("--host", default="0.0.0.0", help="Proxy bind address (default: 0.0.0.0)")
@@ -777,7 +868,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not args.no_m3u:
-        write_m3u(channels, out_dir / args.m3u, scraper, license_base)
+        manifest_base = args.manifest_base.rstrip("/") if args.manifest_base else None
+        manifest_qs = urlencode({k: v for k, v in (("max_mbps", args.max_mbps),
+                                                   ("max_height", args.max_height)) if v})
+        if manifest_base and not manifest_qs:
+            logger.warning("--manifest-base given without --max-mbps/--max-height; ignoring")
+            manifest_base = None
+        write_m3u(channels, out_dir / args.m3u, scraper, license_base, args.max_res,
+                  manifest_qs, manifest_base)
 
     if not args.no_epg:
         logger.info("Fetching EPG for %d channels…", len(channels))
