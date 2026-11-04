@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-Standalone Vidaa Free TV M3U Playlist + EPG (XMLTV) Generator
+Standalone Vidaa Free TV M3U Playlist + EPG (XMLTV) Generator, with DRM bridge.
 
-Scrapes Vidaa's signed VIDAA 2.0 backend (Hisense Channels) and emits:
-  - vidaa.m3u  (playlist, with DRM tile manifests unwrapped to plain DASH URLs)
-  - vidaa.xml  (XMLTV EPG)
+Generate:
+    python vidaa_m3u_epg.py [--out-dir DIR] [--license-base URL] ...
+      -> vidaa.m3u (DRM tiles get Kodi/inputstream.adaptive Widevine props that
+         point at the license proxy) and vidaa.xml
 
-DRM-encrypted tiles have their mini-player wrapper unwrapped to the real DASH
-manifest URL, but they will NOT play in a standard player without a Widevine
-license — the license fetch requires the signed `playback-request` header built
-by `prepare_license_request()`. Unencrypted (HLS) tiles play fine directly.
+License proxy (needed for DRM tiles; keep it running while you watch):
+    python vidaa_m3u_epg.py --serve [--port 8765]
 
-Usage:
-    python vidaa_m3u_epg.py [--out-dir DIR] [--m3u NAME] [--epg NAME]
-                            [--no-m3u] [--no-epg] [--verbose]
+The proxy receives the player's Widevine challenge at /license/<channel_id>,
+re-resolves the per-tile license URL + stream id, adds the `playback-request`
+header Vidaa's license server wants, and returns the license. Same approach as
+FastChannels' /play/vidaa/license route.
+
+Players: DRM tiles need a Widevine-capable player that honors #KODIPROP
+(Kodi + inputstream.adaptive, TiviMate does not). HLS tiles play anywhere.
 """
 
 from __future__ import annotations
@@ -23,12 +26,15 @@ import base64
 import hashlib
 import json
 import logging
+import socket
 import sys
+import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlparse, urlunparse
@@ -38,10 +44,6 @@ import requests
 
 logger = logging.getLogger("vidaa")
 
-
-# ---------------------------------------------------------------------------
-# Inline data classes (replaces `from .base import ...`)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class ChannelData:
@@ -70,14 +72,9 @@ class ScrapeSkipError(RuntimeError):
     pass
 
 
-# Inlined stubs for the framework helpers the original code depended on.
-# The real versions do fuzzy matching against a category/language rulebook;
-# these are deliberately simple so the script has no data-file dependency.
-
 def category_for_channel(name: str, column_title: str | None) -> str | None:
     if not column_title:
         return None
-    # These mirror Vidaa's actual column titles from _COMMON_PARAMS's `scene`.
     if column_title in ("Movies", "Entertainment", "News & Opinion",
                         "Sports", "Kids", "Music"):
         return column_title
@@ -98,32 +95,24 @@ def infer_category_from_name(name: str) -> str | None:
 
 
 def infer_language_from_metadata(name: str) -> str:
-    # Vidaa's US lineup is overwhelmingly English; Spanish is handled by the
-    # "In Spanish" column title (see _SPANISH_COLUMN_TITLE below).
     return "en"
 
 
 def resolve_gracenote(source: str, lookup_key: str) -> str | None:
-    # No gracenote map bundled in the standalone script — this is fine; the
-    # field is optional metadata that most M3U/XMLTV consumers ignore.
     return None
 
 
 class BaseScraper:
-    """Minimal stand-in for the framework's BaseScraper."""
-
     source_name = "base"
 
     def __init__(self, config: dict | None = None):
         self.config = config or {}
         self.session = requests.Session()
-        self._progress_cb = None
         self.cache: dict = {}
 
 
 # ---------------------------------------------------------------------------
-# Vidaa constants (unchanged from the original — see MIGRATION_RESEARCH.md
-# in the upstream repo for how each was reverse-engineered)
+# Vidaa constants
 # ---------------------------------------------------------------------------
 
 _APP_KEY             = "1204099470"
@@ -140,6 +129,7 @@ _EPG_HORIZON_DAYS      = 5
 _EPG_CIRCUIT_THRESHOLD = 5
 _SPANISH_COLUMN_TITLE  = "In Spanish"
 _DRM_PARAM_TTL         = 30 * 60
+_DEFAULT_PORT          = 8765
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 _DEVICE_ID = "002003059003001007000128pngito97hw8ktrcmhh4njsaof802ig"
@@ -160,10 +150,6 @@ _COMMON_PARAMS = {
     "localeLanguage":      "eng",
 }
 
-
-# ---------------------------------------------------------------------------
-# Signing + parsing helpers (unchanged)
-# ---------------------------------------------------------------------------
 
 def _sign_query(params: dict[str, str]) -> str:
     keys = sorted(k for k, v in params.items() if v not in (None, ""))
@@ -205,6 +191,19 @@ def _chunk(seq: list, size: int):
         yield seq[i:i + size]
 
 
+def _playback_request_header(stream_id: str) -> str:
+    return base64.b64encode(json.dumps({
+        "assetId": stream_id,
+        "clientMetadata": {
+            "name": "vod",
+            "version": "1.0.0",
+            "os": {"name": "Linux", "version": "5.15.148"},
+            "device": {"type": "vidaaOS"},
+            "supportedDrms": [{"type": "widevine"}, {"type": "playready"}],
+        },
+    }, separators=(",", ":")).encode()).decode()
+
+
 # ---------------------------------------------------------------------------
 # Scraper
 # ---------------------------------------------------------------------------
@@ -219,6 +218,7 @@ class VidaaScraper(BaseScraper):
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
         self._drm_param_cache: dict[str, dict] = {}
+        self._lock = threading.Lock()
         self._load_drm_param_cache()
 
     # -- persisted DRM cache ------------------------------------------------
@@ -355,6 +355,8 @@ class VidaaScraper(BaseScraper):
                                cid, name)
                 return None
             stream_url = wrapped['streaming_url']
+            # Cache license params now so the proxy doesn't need a live lookup.
+            self._drm_param_cache[str(cid)] = {"params": wrapped, "cached_at": time.time()}
         else:
             stream_url = _clean_stream_url(stream_url)
         is_spanish = column_title == _SPANISH_COLUMN_TITLE
@@ -405,13 +407,16 @@ class VidaaScraper(BaseScraper):
                 if channel:
                     channels.append(channel)
 
+        self._persist_drm_param_cache()
+
         breakdown = ", ".join(
             f"{col.get('title') or ''}={len(tile_ids_by_column.get(col.get('id'), []))}"
             for col in columns
             if col.get("id") is not None
         )
-        logger.info("[vidaa] %d channels fetched across %d categories (%s)",
-                    len(channels), len(columns), breakdown)
+        logger.info("[vidaa] %d channels fetched across %d categories (%s); %d DRM",
+                    len(channels), len(columns), breakdown,
+                    sum(1 for c in channels if c.stream_type == "dash"))
         return channels
 
     # -- EPG ----------------------------------------------------------------
@@ -502,27 +507,28 @@ class VidaaScraper(BaseScraper):
                     len(programs), len(channels))
         return programs
 
-    # -- DRM license bridge (kept for API parity; not used by CLI) -----------
+    # -- DRM license bridge -------------------------------------------------
 
     def _lookup_drm_params(self, channel_id: str) -> dict | None:
         cid = str(channel_id)
-        cached = self._drm_param_cache.get(cid)
-        if cached:
-            return cached["params"]
-        try:
-            detail = self._fetch_medias_info([int(channel_id)], int(time.time()))
-        except Exception as exc:
-            logger.warning("[vidaa] DRM param lookup failed for %s: %s", channel_id, exc)
-            return None
-        medias = detail.get("medias") or []
-        if not medias:
-            return None
-        raw = (medias[0].get("channelInfo") or {}).get("streamingParam") or ""
-        params = _parse_mini_player(raw)
-        if params:
-            self._drm_param_cache[cid] = {"params": params, "cached_at": time.time()}
-            self._persist_drm_param_cache()
-        return params
+        with self._lock:
+            cached = self._drm_param_cache.get(cid)
+            if cached and (time.time() - cached["cached_at"]) < _DRM_PARAM_TTL:
+                return cached["params"]
+            try:
+                detail = self._fetch_medias_info([int(channel_id)], int(time.time()))
+            except Exception as exc:
+                logger.warning("[vidaa] DRM param lookup failed for %s: %s", channel_id, exc)
+                return None
+            medias = detail.get("medias") or []
+            if not medias:
+                return None
+            raw = (medias[0].get("channelInfo") or {}).get("streamingParam") or ""
+            params = _parse_mini_player(raw)
+            if params:
+                self._drm_param_cache[cid] = {"params": params, "cached_at": time.time()}
+                self._persist_drm_param_cache()
+            return params
 
     def get_license_url(self, channel_id: str | None = None) -> str | None:
         if not channel_id:
@@ -537,25 +543,104 @@ class VidaaScraper(BaseScraper):
     ) -> tuple[bytes, dict]:
         params = self._lookup_drm_params(channel_id) if channel_id else None
         stream_id = params['stream_id'] if params else (channel_id or "")
-        playback_request = base64.b64encode(json.dumps({
-            "assetId": stream_id,
-            "clientMetadata": {
-                "name": "vod",
-                "version": "1.0.0",
-                "os": {"name": "Linux", "version": "5.15.148"},
-                "device": {"type": "vidaaOS"},
-                "supportedDrms": [{"type": "widevine"}, {"type": "playready"}],
-            },
-        }, separators=(",", ":")).encode()).decode()
-        return challenge, {"playback-request": playback_request}
+        return challenge, {"playback-request": _playback_request_header(stream_id)}
+
+
+# ---------------------------------------------------------------------------
+# License proxy server (stdlib only)
+# ---------------------------------------------------------------------------
+
+def _make_handler(scraper: VidaaScraper):
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):
+            logger.debug("[proxy] " + fmt, *args)
+
+        def _reply(self, code: int, body: bytes = b"", ctype: str = "application/octet-stream"):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self._reply(204)
+
+        def do_GET(self):
+            if self.path.rstrip("/") in ("", "/health"):
+                self._reply(200, b"vidaa license proxy ok\n", "text/plain")
+            else:
+                self._reply(404)
+
+        def do_POST(self):
+            parts = [p for p in urlparse(self.path).path.split("/") if p]
+            if len(parts) != 2 or parts[0] != "license" or not parts[1].isdigit():
+                return self._reply(404)
+            cid = parts[1]
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if not 0 < length <= 65536:
+                return self._reply(400 if length <= 0 else 413)
+            challenge = self.rfile.read(length)
+
+            license_url = scraper.get_license_url(cid)
+            if not license_url:
+                logger.warning("[proxy] no license params for channel %s", cid)
+                return self._reply(502)
+            body, headers = scraper.prepare_license_request(challenge, cid)
+            headers["Content-Type"] = "application/octet-stream"
+            try:
+                r = requests.post(license_url, data=body, headers=headers, timeout=15)
+            except Exception as exc:
+                logger.warning("[proxy] license request failed for %s: %s", cid, exc)
+                return self._reply(502)
+            if r.status_code >= 400:
+                logger.warning("[proxy] channel %s upstream HTTP %s: %s",
+                               cid, r.status_code, r.content[:300])
+                # stale stream_id? drop cache so the next attempt re-resolves
+                scraper._drm_param_cache.pop(cid, None)
+            else:
+                logger.info("[proxy] channel %s license OK (%d bytes)", cid, len(r.content))
+            self._reply(r.status_code, r.content)
+
+    return Handler
+
+
+def serve(scraper: VidaaScraper, host: str, port: int) -> None:
+    server = ThreadingHTTPServer((host, port), _make_handler(scraper))
+    logger.info("License proxy listening on http://%s:%d (POST /license/<channel_id>)", host, port)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+def _lan_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 
 # ---------------------------------------------------------------------------
 # M3U + XMLTV writers
 # ---------------------------------------------------------------------------
 
-def write_m3u(channels: list[ChannelData], path: Path) -> None:
+def write_m3u(channels: list[ChannelData], path: Path, license_base: str) -> None:
     lines = ["#EXTM3U"]
+    drm_count = 0
     for ch in channels:
         group = ch.category or "General"
         attrs = [
@@ -567,12 +652,22 @@ def write_m3u(channels: list[ChannelData], path: Path) -> None:
             attrs.append(f'tvg-logo="{_esc(ch.logo_url)}"')
         if ch.language:
             attrs.append(f'tvg-language="{ch.language}"')
-        # Mark DRM tiles in the name so players/users know they need Widevine.
-        suffix = " [DRM]" if ch.stream_type == "dash" else ""
+        is_drm = ch.stream_type == "dash"
+        suffix = " [DRM]" if is_drm else ""
         lines.append(f'#EXTINF:-1 {" ".join(attrs)},{ch.name}{suffix}')
+        if is_drm:
+            drm_count += 1
+            lines += [
+                "#KODIPROP:inputstreamaddon=inputstream.adaptive",
+                "#KODIPROP:inputstream.adaptive.manifest_type=mpd",
+                "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
+                f"#KODIPROP:inputstream.adaptive.license_key="
+                f"{license_base}/license/{ch.source_channel_id}||R{{SSM}}|",
+            ]
         lines.append(ch.stream_url)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    logger.info("Wrote %d channels to %s", len(channels), path)
+    logger.info("Wrote %d channels (%d DRM, license proxy %s) to %s",
+                len(channels), drm_count, license_base, path)
 
 
 def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: Path) -> None:
@@ -615,16 +710,23 @@ def _esc(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate Vidaa M3U playlist + XMLTV EPG.")
-    parser.add_argument("--out-dir", default=".", help="Output directory (default: .)")
-    parser.add_argument("--m3u", default="vidaa.m3u", help="Playlist filename")
-    parser.add_argument("--epg", default="vidaa.xml", help="EPG filename")
-    parser.add_argument("--no-m3u", action="store_true", help="Skip playlist generation")
-    parser.add_argument("--no-epg", action="store_true", help="Skip EPG generation")
-    parser.add_argument("--cache-path", default=None,
-                        help="DRM param cache path (default: ~/.cache/vidaa_m3u_epg/drm_params.json)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
-    return parser.parse_args(argv)
+    p = argparse.ArgumentParser(description="Generate Vidaa M3U playlist + XMLTV EPG, with DRM license proxy.")
+    p.add_argument("--out-dir", default=".", help="Output directory (default: .)")
+    p.add_argument("--m3u", default="vidaa.m3u", help="Playlist filename")
+    p.add_argument("--epg", default="vidaa.xml", help="EPG filename")
+    p.add_argument("--no-m3u", action="store_true", help="Skip playlist generation")
+    p.add_argument("--no-epg", action="store_true", help="Skip EPG generation")
+    p.add_argument("--cache-path", default=None,
+                   help="DRM param cache path (default: ~/.cache/vidaa_m3u_epg/drm_params.json)")
+    p.add_argument("--license-base", default=None,
+                   help=f"Base URL players use to reach the license proxy "
+                        f"(default: http://<this machine's LAN IP>:{_DEFAULT_PORT})")
+    p.add_argument("--serve", action="store_true",
+                   help="Run the Widevine license proxy instead of generating files")
+    p.add_argument("--host", default="0.0.0.0", help="Proxy bind address (default: 0.0.0.0)")
+    p.add_argument("--port", type=int, default=_DEFAULT_PORT, help=f"Proxy port (default: {_DEFAULT_PORT})")
+    p.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
+    return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -634,13 +736,18 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    out_dir = Path(args.out_dir).expanduser().resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     config: dict[str, Any] = {}
     if args.cache_path:
         config["cache_path"] = args.cache_path
     scraper = VidaaScraper(config=config)
+
+    if args.serve:
+        serve(scraper, args.host, args.port)
+        return 0
+
+    out_dir = Path(args.out_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    license_base = (args.license_base or f"http://{_lan_ip()}:{args.port}").rstrip("/")
 
     logger.info("Fetching channel catalogue…")
     try:
@@ -653,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not args.no_m3u:
-        write_m3u(channels, out_dir / args.m3u)
+        write_m3u(channels, out_dir / args.m3u, license_base)
 
     if not args.no_epg:
         logger.info("Fetching EPG for %d channels…", len(channels))
