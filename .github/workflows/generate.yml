@@ -9,6 +9,10 @@ on:
         description: "Skip EPG generation (M3U only)"
         type: boolean
         default: false
+      force:
+        description: "Force rebuild even if outputs are < 6 h old"
+        type: boolean
+        default: false
 
 concurrency:
   group: m3u-epg
@@ -52,7 +56,41 @@ jobs:
       - name: Prepare output directory
         run: mkdir -p playlists
 
+      - name: Check freshness
+        id: fresh
+        run: |
+          FORCE="${{ github.event.inputs.force }}"
+          THRESHOLD=$((6 * 3600))
+          NOW=$(date +%s)
+          check() {
+            local name="$1"
+            local file="playlists/$name.m3u"
+            if [ "$FORCE" = "true" ]; then
+              echo "$name=stale (force)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            if [ ! -s "$file" ]; then
+              echo "$name=stale (missing)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            local age=$(( NOW - $(stat -c %Y "$file") ))
+            if [ "$age" -ge "$THRESHOLD" ]; then
+              echo "$name=stale (age ${age}s)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=fresh (age ${age}s)"
+              echo "${name}_stale=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          check adultswim
+          check vidaa
+          check cineverse
+          if grep -q '=stale' <(echo "adultswim=${{ steps.fresh.outputs.adultswim_stale }}"); then :; fi
+
       - name: Run Adult Swim scraper
+        if: steps.fresh.outputs.adultswim_stale == 'true'
         env:
           PYTHONUNBUFFERED: "1"
         run: |
@@ -70,6 +108,7 @@ jobs:
             $EXTRA
 
       - name: Run Vidaa scraper
+        if: steps.fresh.outputs.vidaa_stale == 'true'
         env:
           PYTHONUNBUFFERED: "1"
         run: |
@@ -86,6 +125,7 @@ jobs:
             $EXTRA
 
       - name: Run Cineverse scraper
+        if: steps.fresh.outputs.cineverse_stale == 'true'
         env:
           PYTHONUNBUFFERED: "1"
         run: |
@@ -129,13 +169,19 @@ jobs:
         run: |
           echo "### Refresh summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Source | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source | Rebuilt | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          declare -A rebuilt=(
+            [adultswim]="${{ steps.fresh.outputs.adultswim_stale }}"
+            [vidaa]="${{ steps.fresh.outputs.vidaa_stale }}"
+            [cineverse]="${{ steps.fresh.outputs.cineverse_stale }}"
+          )
           for src in adultswim vidaa cineverse; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
-            echo "| $src | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
+            state=$([ "${rebuilt[$src]}" = "true" ] && echo "yes" || echo "skipped (fresh)")
+            echo "| $src | $state | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
           done
 
       - name: Commit updated files
