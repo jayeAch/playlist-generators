@@ -117,7 +117,7 @@ jobs:
             EXTRA=""
           fi
           python vidaa.py \
-            --max-res 1080p    # choices: 360p 480p 540p 720p 1080p \
+            --max-res 720p \
             --out-dir playlists \
             --m3u vidaa.m3u \
             --epg vidaa.xml \
