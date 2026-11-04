@@ -669,7 +669,7 @@ def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
                 lic = scraper.get_license_url(ch.source_channel_id)
                 if lic:
                     _, hdrs = scraper.prepare_license_request(b"", ch.source_channel_id)
-                    hdr = "&".join(f"{k}={quote(v, safe='')}" for k, v in hdrs.items())
+                    hdr = "&".join(f"{k}={quote(v, safe='=')}" for k, v in hdrs.items())  # literal '=' padding, as OTT Navigator needs
                     key = f"{lic}|{hdr}|R{{SSM}}|"
                 else:
                     logger.warning("[vidaa] no license params for %s (%s)", ch.source_channel_id, ch.name)
