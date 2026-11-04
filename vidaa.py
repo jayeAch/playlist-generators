@@ -7,8 +7,11 @@ Generate:
       -> vidaa.m3u (DRM tiles get Kodi/inputstream.adaptive Widevine props that
          point at the license proxy) and vidaa.xml
 
-License proxy (needed for DRM tiles; keep it running while you watch):
+By default (like fc-lite with no base_url) the Widevine license URL and the
+`playback-request` header are baked into the M3U, so no server is needed.
+Optional proxy mode, if baked licenses stop working (stream ids expire):
     python vidaa_m3u_epg.py --serve [--port 8765]
+    python vidaa_m3u_epg.py --license-base http://<host>:8765
 
 The proxy receives the player's Widevine challenge at /license/<channel_id>,
 re-resolves the per-tile license URL + stream id, adds the `playback-request`
@@ -37,7 +40,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse, urlunparse
 from xml.dom import minidom
 
 import requests
@@ -638,7 +641,8 @@ def _lan_ip() -> str:
 # M3U + XMLTV writers
 # ---------------------------------------------------------------------------
 
-def write_m3u(channels: list[ChannelData], path: Path, license_base: str) -> None:
+def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
+              license_base: str | None) -> None:
     lines = ["#EXTM3U"]
     drm_count = 0
     for ch in channels:
@@ -655,19 +659,32 @@ def write_m3u(channels: list[ChannelData], path: Path, license_base: str) -> Non
         is_drm = ch.stream_type == "dash"
         suffix = " [DRM]" if is_drm else ""
         lines.append(f'#EXTINF:-1 {" ".join(attrs)},{ch.name}{suffix}')
+        key = None
         if is_drm:
+            if license_base:
+                key = f"{license_base}/license/{ch.source_channel_id}||R{{SSM}}|"
+            else:
+                # Baked mode (fc-lite default): license URL + playback-request header
+                # go straight into the M3U; no proxy needed.
+                lic = scraper.get_license_url(ch.source_channel_id)
+                if lic:
+                    _, hdrs = scraper.prepare_license_request(b"", ch.source_channel_id)
+                    hdr = "&".join(f"{k}={quote(v, safe='')}" for k, v in hdrs.items())
+                    key = f"{lic}|{hdr}|R{{SSM}}|"
+                else:
+                    logger.warning("[vidaa] no license params for %s (%s)", ch.source_channel_id, ch.name)
+        if key:
             drm_count += 1
             lines += [
-                "#KODIPROP:inputstreamaddon=inputstream.adaptive",
+                "#KODIPROP:inputstream=inputstream.adaptive",
                 "#KODIPROP:inputstream.adaptive.manifest_type=mpd",
                 "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
-                f"#KODIPROP:inputstream.adaptive.license_key="
-                f"{license_base}/license/{ch.source_channel_id}||R{{SSM}}|",
+                f"#KODIPROP:inputstream.adaptive.license_key={key}",
             ]
         lines.append(ch.stream_url)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    logger.info("Wrote %d channels (%d DRM, license proxy %s) to %s",
-                len(channels), drm_count, license_base, path)
+    logger.info("Wrote %d channels (%d DRM, %s) to %s", len(channels), drm_count,
+                f"proxy {license_base}" if license_base else "license baked in", path)
 
 
 def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: Path) -> None:
@@ -719,8 +736,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--cache-path", default=None,
                    help="DRM param cache path (default: ~/.cache/vidaa_m3u_epg/drm_params.json)")
     p.add_argument("--license-base", default=None,
-                   help=f"Base URL players use to reach the license proxy "
-                        f"(default: http://<this machine's LAN IP>:{_DEFAULT_PORT})")
+                   help="Optional. Base URL of the --serve proxy (e.g. http://192.168.1.5:8765). "
+                        "Default: no proxy; license URL + header are baked into the M3U")
     p.add_argument("--serve", action="store_true",
                    help="Run the Widevine license proxy instead of generating files")
     p.add_argument("--host", default="0.0.0.0", help="Proxy bind address (default: 0.0.0.0)")
@@ -747,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = Path(args.out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    license_base = (args.license_base or f"http://{_lan_ip()}:{args.port}").rstrip("/")
+    license_base = args.license_base.rstrip("/") if args.license_base else None
 
     logger.info("Fetching channel catalogue…")
     try:
@@ -760,7 +777,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not args.no_m3u:
-        write_m3u(channels, out_dir / args.m3u, license_base)
+        write_m3u(channels, out_dir / args.m3u, scraper, license_base)
 
     if not args.no_epg:
         logger.info("Fetching EPG for %d channels…", len(channels))
