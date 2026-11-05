@@ -134,7 +134,7 @@ jobs:
             EXTRA=""
           fi
           python samsung.py \
-            --regions us \
+            --regions us, ca, gb \
             --drm include \
             --out-dir playlists \
             --m3u samsung.m3u \
