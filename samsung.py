@@ -116,8 +116,9 @@ def write_m3u(channels: list[dict], path: Path) -> None:
             drm += 1
             hdr = "&".join(f"{k}={quote(v, safe='=')}" for k, v in ch["license_headers"].items())
             lines += [
+                # No manifest_type on purpose: Samsung's DRM streams can be HLS or DASH,
+                # and forcing mpd makes the player choke on an HLS playlist.
                 "#KODIPROP:inputstream=inputstream.adaptive",
-                "#KODIPROP:inputstream.adaptive.manifest_type=mpd",
                 "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
                 f"#KODIPROP:inputstream.adaptive.license_key={ch['license_url']}|{hdr}|R{{SSM}}|",
             ]
