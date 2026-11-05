@@ -14,6 +14,7 @@ No proxy or server is needed unless the license call turns out to need one.
 
 Usage:
     python samsung_m3u_epg.py [--regions us,ca] [--drm include|only|exclude]
+      (regions: no spaces after commas unless you quote the whole value)
                               [--out-dir DIR] [--m3u NAME] [--epg NAME]
                               [--no-epg] [--inspect] [-v]
 
@@ -32,6 +33,7 @@ import json
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
@@ -64,6 +66,27 @@ def _license_headers(ch: dict) -> dict[str, str]:
         if isinstance(h, dict) and h:
             return {str(k): str(v) for k, v in h.items()}
     return {}
+
+
+def sniff_manifest_type(session: requests.Session, url: str) -> str:
+    """Return 'hls' or 'mpd' by looking at what the stream URL really serves.
+
+    Samsung's DRM channels are not all DASH (some are HLS), and players that see a
+    DRM tag will otherwise guess DASH and fail with "Unexpected token #EXTM3U".
+    Falls back to 'hls' if the lookup fails."""
+    try:
+        with session.get(url, stream=True, timeout=12, allow_redirects=True,
+                         headers={"User-Agent": UA}) as r:
+            head = next(r.iter_content(512), b"")[:512].lstrip().lower()
+            ctype = (r.headers.get("Content-Type") or "").lower()
+    except Exception as exc:
+        logger.debug("manifest sniff failed for %s: %s", url, exc)
+        return "hls"
+    if head.startswith(b"#extm3u") or "mpegurl" in ctype:
+        return "hls"
+    if head.startswith(b"<") or "dash" in ctype:
+        return "mpd"
+    return "hls"
 
 
 def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str):
@@ -100,7 +123,14 @@ def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str)
     return channels
 
 
-def write_m3u(channels: list[dict], path: Path) -> None:
+def write_m3u(channels: list[dict], path: Path, session: requests.Session) -> None:
+    drm_chs = [c for c in channels if c["license_url"]]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        types = list(pool.map(lambda c: sniff_manifest_type(session, STREAM_URL.format(id=c["id"])), drm_chs))
+    for c, t in zip(drm_chs, types):
+        c["manifest_type"] = t
+    logger.info("DRM manifest types: %d hls, %d mpd", types.count("hls"), types.count("mpd"))
+
     lines = ["#EXTM3U"]
     drm = 0
     for ch in channels:
@@ -116,9 +146,10 @@ def write_m3u(channels: list[dict], path: Path) -> None:
             drm += 1
             hdr = "&".join(f"{k}={quote(v, safe='=')}" for k, v in ch["license_headers"].items())
             lines += [
-                # No manifest_type on purpose: Samsung's DRM streams can be HLS or DASH,
-                # and forcing mpd makes the player choke on an HLS playlist.
+                # manifest_type is sniffed per channel: Samsung DRM streams can be HLS or
+                # DASH, and a wrong or missing hint makes the player parse HLS as XML.
                 "#KODIPROP:inputstream=inputstream.adaptive",
+                f"#KODIPROP:inputstream.adaptive.manifest_type={ch['manifest_type']}",
                 "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
                 f"#KODIPROP:inputstream.adaptive.license_key={ch['license_url']}|{hdr}|R{{SSM}}|",
             ]
@@ -165,8 +196,12 @@ def write_epg(session: requests.Session, channels: list[dict], regions: list[str
 
 def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate Samsung TV Plus M3U + XMLTV, with DRM channels.")
+    # NOTE: when passing several regions, do NOT put unquoted spaces after the commas
+    # (e.g. `--regions us, ca, gb`). The shell splits that into separate arguments and
+    # argparse fails. Use `--regions us,ca,gb` or quote it: `--regions "us, ca, gb"`.
     p.add_argument("--regions", default="us",
-                   help=f"Comma-separated regions (default: us). Options: {','.join(ALLOWED_REGIONS)}")
+                   help=f"Comma-separated regions, no spaces unless quoted (default: us). "
+                        f"Options: {','.join(ALLOWED_REGIONS)}")
     p.add_argument("--drm", choices=("include", "only", "exclude"), default="include",
                    help="Widevine channels: include (default), only, or exclude")
     p.add_argument("--out-dir", default=".", help="Output directory (default: .)")
@@ -209,7 +244,7 @@ def main(argv=None) -> int:
 
     out = Path(args.out_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
-    write_m3u(channels, out / args.m3u)
+    write_m3u(channels, out / args.m3u, session)
     if not args.no_epg:
         write_epg(session, channels, regions, out / args.epg)
     logger.info("Done.")
