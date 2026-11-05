@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa M3U + EPG
+name: Adult Swim + Vidaa + Samsung M3U + EPG
 
 on:
   schedule:
@@ -86,7 +86,7 @@ jobs:
           }
           check adultswim
           check vidaa
-          if grep -q '=stale' <(echo "adultswim=${{ steps.fresh.outputs.adultswim_stale }}"); then :; fi
+          check samsung
 
       - name: Run Adult Swim scraper
         if: steps.fresh.outputs.adultswim_stale == 'true'
@@ -123,14 +123,33 @@ jobs:
             -v \
             $EXTRA
 
+      - name: Run Samsung scraper
+        if: steps.fresh.outputs.samsung_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python samsung.py \
+            --regions us \
+            --drm include \
+            --out-dir playlists \
+            --m3u samsung.m3u \
+            --epg samsung.xml \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
-          for f in playlists/adultswim.m3u playlists/vidaa.m3u; do
+          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u; do
             test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
             head -n 1 "$f" | grep -q '^#EXTM3U' \
               || { echo "::error::$f is not a valid M3U"; exit 1; }
           done
-          for f in playlists/adultswim.xml playlists/vidaa.xml; do
+          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/samsung.xml; do
             if [ -f "$f" ]; then
               python - "$f" <<'PY'
           import sys, xml.etree.ElementTree as ET
@@ -156,8 +175,9 @@ jobs:
           declare -A rebuilt=(
             [adultswim]="${{ steps.fresh.outputs.adultswim_stale }}"
             [vidaa]="${{ steps.fresh.outputs.vidaa_stale }}"
+            [samsung]="${{ steps.fresh.outputs.samsung_stale }}"
           )
-          for src in adultswim vidaa; do
+          for src in adultswim vidaa samsung; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
@@ -171,7 +191,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add playlists/adultswim.m3u playlists/adultswim.xml \
-                  playlists/vidaa.m3u playlists/vidaa.xml 2>/dev/null || true
+                  playlists/vidaa.m3u playlists/vidaa.xml \
+                  playlists/samsung.m3u playlists/samsung.xml 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
