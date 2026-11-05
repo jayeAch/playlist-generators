@@ -114,6 +114,7 @@ def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str)
                 "logo": ch.get("logo"),
                 "group": ch.get("group") or "Live TV",
                 "chno": ch.get("chno"),
+                "description": (ch.get("description") or "").strip(),
                 "license_url": ch.get("license_url") or None,
                 "license_headers": _license_headers(ch),
                 "raw": ch,
@@ -158,10 +159,34 @@ def write_m3u(channels: list[dict], path: Path, session: requests.Session) -> No
     logger.info("Wrote %d channels (%d DRM) to %s", len(channels), drm, path)
 
 
+def _fill_desc(prog: ET.Element, fallback: str) -> bool:
+    """Add a <desc> built from the channel description if the programme has none.
+
+    XMLTV order is title, sub-title, desc, ... so the new element goes right after
+    the last title/sub-title. Returns True if one was added."""
+    if not fallback:
+        return False
+    existing = prog.find("desc")
+    if existing is not None and (existing.text or "").strip():
+        return False
+    if existing is not None:
+        prog.remove(existing)
+    idx = 0
+    for i, child in enumerate(list(prog)):
+        if child.tag in ("title", "sub-title"):
+            idx = i + 1
+    desc = ET.Element("desc")
+    desc.text = fallback
+    prog.insert(idx, desc)
+    return True
+
+
 def write_epg(session: requests.Session, channels: list[dict], regions: list[str], path: Path) -> None:
     owned: dict[str, set[str]] = {}
+    chan_desc: dict[str, str] = {}
     for ch in channels:
         owned.setdefault(ch["region"], set()).add(ch["id"])
+        chan_desc[ch["id"]] = ch["description"]
 
     tv = ET.Element("tv", {"generator-info-name": "samsung-m3u-epg",
                            "source-info-name": "i.mjh.nz/SamsungTVPlus"})
@@ -181,13 +206,16 @@ def write_epg(session: requests.Session, channels: list[dict], regions: list[str
         except Exception as exc:
             logger.warning("EPG fetch failed for region=%s: %s", region, exc)
             continue
-        n = 0
+        n = filled = 0
         for prog in root.iter("programme"):
-            if prog.get("channel") in ids:
+            cid = prog.get("channel")
+            if cid in ids:
+                if _fill_desc(prog, chan_desc.get(cid, "")):
+                    filled += 1
                 tv.append(prog)
                 n += 1
         total += n
-        logger.info("%d programmes (region=%s)", n, region)
+        logger.info("%d programmes (region=%s), %d given channel-description fallback", n, region, filled)
 
     ET.indent(tv)
     ET.ElementTree(tv).write(path, encoding="utf-8", xml_declaration=True)
