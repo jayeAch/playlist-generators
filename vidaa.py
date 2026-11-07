@@ -76,26 +76,36 @@ class ScrapeSkipError(RuntimeError):
     pass
 
 
-def category_for_channel(name: str, column_title: str | None) -> str | None:
-    if not column_title:
+try:
+    # Drop FastChannels' app/scrapers/category_utils.py next to this script
+    # (same folder) to get its full name-based category engine.
+    import category_utils as _cu
+
+    def category_for_channel(name: str, column_title: str | None) -> str | None:
+        return _cu.category_for_channel(name, column_title, "vidaa")
+
+    infer_category_from_name = _cu.infer_category_from_name
+except ImportError:
+    def category_for_channel(name: str, column_title: str | None) -> str | None:
+        if not column_title:
+            return None
+        if column_title in ("Movies", "Entertainment", "News & Opinion",
+                            "Sports", "Kids", "Music"):
+            return column_title
         return None
-    if column_title in ("Movies", "Entertainment", "News & Opinion",
-                        "Sports", "Kids", "Music"):
-        return column_title
-    return None
 
 
-def infer_category_from_name(name: str) -> str | None:
-    n = name.casefold()
-    if any(k in n for k in ("news", "weather", "cnn", "fox news")):
-        return "News"
-    if any(k in n for k in ("sport", "nfl", "nba", "mlb", "nhl")):
-        return "Sports"
-    if any(k in n for k in ("kid", "cartoon", "nick", "disney", "junior")):
-        return "Kids"
-    if any(k in n for k in ("music", "mtv", "vh1", "vevo")):
-        return "Music"
-    return "General"
+    def infer_category_from_name(name: str) -> str | None:
+        n = name.casefold()
+        if any(k in n for k in ("news", "weather", "cnn", "fox news")):
+            return "News"
+        if any(k in n for k in ("sport", "nfl", "nba", "mlb", "nhl")):
+            return "Sports"
+        if any(k in n for k in ("kid", "cartoon", "nick", "disney", "junior")):
+            return "Kids"
+        if any(k in n for k in ("music", "mtv", "vh1", "vevo")):
+            return "Music"
+        return "General"
 
 
 def infer_language_from_metadata(name: str) -> str:
@@ -364,7 +374,7 @@ class VidaaScraper(BaseScraper):
         else:
             stream_url = _clean_stream_url(stream_url)
         is_spanish = column_title == _SPANISH_COLUMN_TITLE
-        category = category_for_channel(name, column_title) or infer_category_from_name(name)
+        category = category_for_channel(name, column_title) or infer_category_from_name(name) or "Entertainment"
         language = "es" if is_spanish else infer_language_from_metadata(name)
         return ChannelData(
             source_channel_id = str(cid),
@@ -782,6 +792,7 @@ def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: 
         if ch.logo_url:
             ET.SubElement(channel_el, "icon", {"src": ch.logo_url})
 
+    cat_by_id = {ch.source_channel_id: ch.category for ch in channels if ch.category}
     fmt = "%Y%m%d%H%M%S %z"
     for prog in sorted(programs, key=lambda p: (p.source_channel_id, p.start_time)):
         prog_el = ET.SubElement(tv, "programme", {
@@ -792,6 +803,9 @@ def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: 
         ET.SubElement(prog_el, "title", {"lang": "en"}).text = prog.title
         if prog.description:
             ET.SubElement(prog_el, "desc", {"lang": "en"}).text = prog.description
+        cat = cat_by_id.get(prog.source_channel_id)
+        if cat:
+            ET.SubElement(prog_el, "category", {"lang": "en"}).text = cat
         if prog.poster_url:
             ET.SubElement(prog_el, "icon", {"src": prog.poster_url})
 
