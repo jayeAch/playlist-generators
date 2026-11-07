@@ -99,7 +99,6 @@ jobs:
             EXTRA=""
           fi
           python adultswim.py \
-            --drm exclude \
             --out-dir playlists \
             --m3u adultswim.m3u \
             --epg adultswim.xml \
@@ -139,7 +138,7 @@ jobs:
           # Never put a "# comment" on a line ending in "\" below; it breaks the continuation.
           python samsung.py \
             --regions us,ca \
-            --drm include \
+            --drm exclude \
             --out-dir playlists \
             --m3u samsung.m3u \
             --epg samsung.xml \
