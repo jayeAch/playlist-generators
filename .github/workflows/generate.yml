@@ -99,6 +99,7 @@ jobs:
             EXTRA=""
           fi
           python adultswim.py \
+            --drm exclude \
             --out-dir playlists \
             --m3u adultswim.m3u \
             --epg adultswim.xml \
