@@ -8,9 +8,15 @@ Data source: Matt Huisman's public mirror (credit to @matthuisman)
 Streams:      https://jmp2.uk/stvp-{channel_id}   (redirects to the live CDN URL)
 
 Channels whose metadata has a `license_url` are Widevine-protected. This script
-keeps them (the FastChannels scraper skipped them) and writes #KODIPROP lines
-with the license URL baked into the M3U, same format as the Vidaa generator.
-No proxy or server is needed unless the license call turns out to need one.
+keeps them and writes #KODIPROP lines with the license URL baked into the M3U,
+same format as the Vidaa generator.
+
+Changes vs the previous version (parity with FastChannels):
+  * EPG: every programme gets a <category> (the channel's group) if it has none
+  * M3U: adds channel-id and tvg-description
+  * Multi-region: channel names get a " (US)" style suffix when more than one
+    region is selected (M3U and EPG display-name), so duplicates are distinguishable
+  * Multi-region: duplicate tvg-chno values are dropped (first one wins)
 
 Usage:
     python samsung_m3u_epg.py [--regions us,ca] [--drm include|only|exclude]
@@ -18,8 +24,7 @@ Usage:
                               [--out-dir DIR] [--m3u NAME] [--epg NAME]
                               [--no-epg] [--inspect] [-v]
 
---inspect prints the raw metadata of the first few DRM channels and exits, so
-you can see exactly which license fields Samsung/the mirror provides.
+--inspect prints the raw metadata of the first few DRM channels and exits.
 
 Requires: requests
 """
@@ -28,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import gzip
-import io
 import json
 import logging
 import re
@@ -71,29 +75,33 @@ def _license_headers(ch: dict) -> dict[str, str]:
 def sniff_manifest_type(session: requests.Session, url: str) -> str:
     """Return 'hls' or 'mpd' by looking at what the stream URL really serves.
 
-    Samsung's DRM channels are not all DASH (some are HLS), and players that see a
-    DRM tag will otherwise guess DASH and fail with "Unexpected token #EXTM3U".
-    Falls back to 'hls' if the lookup fails."""
-    try:
-        with session.get(url, stream=True, timeout=12, allow_redirects=True,
-                         headers={"User-Agent": UA}) as r:
-            head = next(r.iter_content(512), b"")[:512].lstrip().lower()
-            ctype = (r.headers.get("Content-Type") or "").lower()
-    except Exception as exc:
-        logger.debug("manifest sniff failed for %s: %s", url, exc)
-        return "hls"
-    if head.startswith(b"#extm3u") or "mpegurl" in ctype:
-        return "hls"
-    if head.startswith(b"<") or "dash" in ctype:
-        return "mpd"
+    Non-2xx responses (rate limits, error pages) are retried once and never
+    treated as DASH. Falls back to 'hls' if nothing conclusive comes back."""
+    for _ in range(2):
+        try:
+            with session.get(url, stream=True, timeout=12, allow_redirects=True,
+                             headers={"User-Agent": UA}) as r:
+                if not r.ok:
+                    continue
+                head = next(r.iter_content(512), b"")[:512].lstrip().lower()
+                ctype = (r.headers.get("Content-Type") or "").lower()
+        except Exception as exc:
+            logger.debug("manifest sniff failed for %s: %s", url, exc)
+            continue
+        if head.startswith(b"#extm3u") or "mpegurl" in ctype:
+            return "hls"
+        if head.startswith(b"<?xml") or head.startswith(b"<mpd") or "dash" in ctype:
+            return "mpd"
     return "hls"
 
 
 def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str):
     data = json.loads(_gz(session, CHANNELS_URL))
     all_regions = data.get("regions", {})
+    multi = len(regions) > 1
     channels: list[dict] = []
     seen: set[str] = set()
+    used_chno: set[str] = set()
     for region in regions:
         rd = all_regions.get(region)
         if not rd:
@@ -107,13 +115,22 @@ def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str)
             if (drm_mode == "exclude" and is_drm) or (drm_mode == "only" and not is_drm):
                 continue
             seen.add(ch_id)
+            name = ch.get("name") or ch_id
+            display = f"{name} ({region.upper()})" if multi else name
+            chno = ch.get("chno")
+            chno_key = str(chno) if chno else None
+            if chno_key and chno_key in used_chno:
+                chno = None
+            elif chno_key:
+                used_chno.add(chno_key)
             channels.append({
                 "id": ch_id,
                 "region": region,
-                "name": ch.get("name") or ch_id,
+                "name": name,
+                "display": display,
                 "logo": ch.get("logo"),
                 "group": ch.get("group") or "Live TV",
-                "chno": ch.get("chno"),
+                "chno": chno,
                 "description": (ch.get("description") or "").strip(),
                 "license_url": ch.get("license_url") or None,
                 "license_headers": _license_headers(ch),
@@ -126,7 +143,7 @@ def fetch_channels(session: requests.Session, regions: list[str], drm_mode: str)
 
 def write_m3u(channels: list[dict], path: Path, session: requests.Session) -> None:
     drm_chs = [c for c in channels if c["license_url"]]
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         types = list(pool.map(lambda c: sniff_manifest_type(session, STREAM_URL.format(id=c["id"])), drm_chs))
     for c, t in zip(drm_chs, types):
         c["manifest_type"] = t
@@ -135,20 +152,22 @@ def write_m3u(channels: list[dict], path: Path, session: requests.Session) -> No
     lines = ["#EXTM3U"]
     drm = 0
     for ch in channels:
-        attrs = [f'tvg-id="{_esc(ch["id"])}"', f'tvg-name="{_esc(ch["name"])}"',
+        attrs = [f'channel-id="{_esc(ch["id"])}"',
+                 f'tvg-id="{_esc(ch["id"])}"',
+                 f'tvg-name="{_esc(ch["display"])}"',
                  f'group-title="{_esc(ch["group"])}"']
         if ch["logo"]:
             attrs.append(f'tvg-logo="{_esc(ch["logo"])}"')
         if ch["chno"]:
             attrs.append(f'tvg-chno="{_esc(ch["chno"])}"')
+        if ch["description"]:
+            attrs.append(f'tvg-description="{_esc(ch["description"])}"')
         is_drm = bool(ch["license_url"])
-        lines.append(f'#EXTINF:-1 {" ".join(attrs)},{ch["name"]}{" [DRM]" if is_drm else ""}')
+        lines.append(f'#EXTINF:-1 {" ".join(attrs)},{ch["display"]}{" [DRM]" if is_drm else ""}')
         if is_drm:
             drm += 1
             hdr = "&".join(f"{k}={quote(v, safe='=')}" for k, v in ch["license_headers"].items())
             lines += [
-                # manifest_type is sniffed per channel: Samsung DRM streams can be HLS or
-                # DASH, and a wrong or missing hint makes the player parse HLS as XML.
                 "#KODIPROP:inputstream=inputstream.adaptive",
                 f"#KODIPROP:inputstream.adaptive.manifest_type={ch['manifest_type']}",
                 "#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha",
@@ -160,7 +179,7 @@ def write_m3u(channels: list[dict], path: Path, session: requests.Session) -> No
 
 
 def _fill_desc(prog: ET.Element, fallback: str) -> bool:
-    """Add a <desc> built from the channel description if the programme has none.
+    """Add a <desc> from the channel description if the programme has none.
 
     XMLTV order is title, sub-title, desc, ... so the new element goes right after
     the last title/sub-title. Returns True if one was added."""
@@ -181,18 +200,40 @@ def _fill_desc(prog: ET.Element, fallback: str) -> bool:
     return True
 
 
+def _fill_category(prog: ET.Element, fallback: str) -> bool:
+    """Add a <category> from the channel group if the programme has none.
+
+    XMLTV order puts category after title, sub-title, desc, credits, date, so it
+    goes after the last of those. Returns True if one was added."""
+    if not fallback:
+        return False
+    for c in prog.findall("category"):
+        if (c.text or "").strip():
+            return False
+    idx = 0
+    for i, child in enumerate(list(prog)):
+        if child.tag in ("title", "sub-title", "desc", "credits", "date", "category"):
+            idx = i + 1
+    cat = ET.Element("category", {"lang": "en"})
+    cat.text = fallback
+    prog.insert(idx, cat)
+    return True
+
+
 def write_epg(session: requests.Session, channels: list[dict], regions: list[str], path: Path) -> None:
     owned: dict[str, set[str]] = {}
     chan_desc: dict[str, str] = {}
+    chan_group: dict[str, str] = {}
     for ch in channels:
         owned.setdefault(ch["region"], set()).add(ch["id"])
         chan_desc[ch["id"]] = ch["description"]
+        chan_group[ch["id"]] = ch["group"]
 
     tv = ET.Element("tv", {"generator-info-name": "samsung-m3u-epg",
                            "source-info-name": "i.mjh.nz/SamsungTVPlus"})
     for ch in channels:
         el = ET.SubElement(tv, "channel", {"id": ch["id"]})
-        ET.SubElement(el, "display-name").text = ch["name"]
+        ET.SubElement(el, "display-name").text = ch["display"]
         if ch["logo"]:
             ET.SubElement(el, "icon", {"src": ch["logo"]})
 
@@ -206,16 +247,19 @@ def write_epg(session: requests.Session, channels: list[dict], regions: list[str
         except Exception as exc:
             logger.warning("EPG fetch failed for region=%s: %s", region, exc)
             continue
-        n = filled = 0
+        n = filled = cats = 0
         for prog in root.iter("programme"):
             cid = prog.get("channel")
             if cid in ids:
                 if _fill_desc(prog, chan_desc.get(cid, "")):
                     filled += 1
+                if _fill_category(prog, chan_group.get(cid, "")):
+                    cats += 1
                 tv.append(prog)
                 n += 1
         total += n
-        logger.info("%d programmes (region=%s), %d given channel-description fallback", n, region, filled)
+        logger.info("%d programmes (region=%s), %d desc fallbacks, %d category fallbacks",
+                    n, region, filled, cats)
 
     ET.indent(tv)
     ET.ElementTree(tv).write(path, encoding="utf-8", xml_declaration=True)
@@ -224,9 +268,8 @@ def write_epg(session: requests.Session, channels: list[dict], regions: list[str
 
 def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate Samsung TV Plus M3U + XMLTV, with DRM channels.")
-    # NOTE: when passing several regions, do NOT put unquoted spaces after the commas
-    # (e.g. `--regions us, ca, gb`). The shell splits that into separate arguments and
-    # argparse fails. Use `--regions us,ca,gb` or quote it: `--regions "us, ca, gb"`.
+    # NOTE: do NOT put unquoted spaces after commas (`--regions us, ca, gb`);
+    # use `--regions us,ca,gb` or quote it: `--regions "us, ca, gb"`.
     p.add_argument("--regions", default="us",
                    help=f"Comma-separated regions, no spaces unless quoted (default: us). "
                         f"Options: {','.join(ALLOWED_REGIONS)}")
