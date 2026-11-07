@@ -137,7 +137,7 @@ jobs:
           # "us, ca, gb" gets split by bash into separate arguments and the script fails.
           # Never put a "# comment" on a line ending in "\" below; it breaks the continuation.
           python samsung.py \
-            --regions us,ca \
+            --regions us \
             --drm exclude \
             --out-dir playlists \
             --m3u samsung.m3u \
