@@ -5,8 +5,32 @@ Writes an M3U playlist and XMLTV guide. No credentials required.
 
 Usage:
     python whale.py
-    python whale.py --out-dir playlists --m3u whale.m3u --epg whale.xml --days 3
+    python whale.py --out-dir playlists --m3u whale.m3u --epg whale.xml
+    python whale.py --detail-hours 8 --detail-rate 1 --detail-budget 1500
     python whale.py --no-detail        # faster: titles/times only
+    python whale.py --no-epg           # playlist only
+
+Options:
+    --out-dir DIR         Output directory, created if missing        (default: .)
+    --m3u FILE            Playlist filename, relative to --out-dir    (default: whale.m3u)
+    --epg FILE            XMLTV filename, relative to --out-dir       (default: whale.xml)
+    --days N              Days of guide to fetch                      (default: 7)
+    --detail-hours N      Only enrich programs starting within N
+                          hours with descriptions/posters/episode
+                          info; later programs keep titles + times    (default: 12)
+    --detail-workers N    Concurrent detail requests                  (default: 4)
+    --detail-rate R       Max detail requests/sec across all workers;
+                          backs off automatically on HTTP 429         (default: 2.0)
+    --detail-budget SEC   Max seconds spent on enrichment, soonest
+                          programs first; the rest are skipped        (default: 600)
+    --no-detail           Skip enrichment entirely
+    --no-epg              Write the playlist only
+    -v, --verbose         Debug logging
+
+Notes:
+    - Stream URL ad macros (did/session_id/cachebuster) are filled once at
+      generation time, so URLs are only as fresh as the last run.
+    - The detail endpoint is rate limited. If you see 429s, lower --detail-rate.
 
 Deps: pip install requests
 """
