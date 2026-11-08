@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa + Samsung + Whale M3U + EPG
+name: Adult Swim + Vidaa + Samsung + Whale + Vizio M3U + EPG
 
 on:
   schedule:
@@ -88,6 +88,7 @@ jobs:
           check vidaa
           check samsung
           check whale
+          check vizio
 
       - name: Run Adult Swim scraper
         if: steps.fresh.outputs.adultswim_stale == 'true'
@@ -164,14 +165,31 @@ jobs:
             -v \
             $EXTRA
 
+      - name: Run Vizio scraper
+        if: steps.fresh.outputs.vizio_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python vizio.py \
+            --out-dir playlists \
+            --m3u vizio.m3u \
+            --epg vizio.xml \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
-          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u; do
+          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u playlists/vizio.m3u; do
             test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
             head -n 1 "$f" | grep -q '^#EXTM3U' \
               || { echo "::error::$f is not a valid M3U"; exit 1; }
           done
-          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/samsung.xml playlists/whale.xml; do
+          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/samsung.xml playlists/whale.xml playlists/vizio.xml; do
             if [ -f "$f" ]; then
               python - "$f" <<'PY'
           import sys, xml.etree.ElementTree as ET
@@ -199,8 +217,9 @@ jobs:
             [vidaa]="${{ steps.fresh.outputs.vidaa_stale }}"
             [samsung]="${{ steps.fresh.outputs.samsung_stale }}"
             [whale]="${{ steps.fresh.outputs.whale_stale }}"
+            [vizio]="${{ steps.fresh.outputs.vizio_stale }}"
           )
-          for src in adultswim vidaa samsung whale; do
+          for src in adultswim vidaa samsung whale vizio; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
@@ -216,7 +235,8 @@ jobs:
           git add playlists/adultswim.m3u playlists/adultswim.xml \
                   playlists/vidaa.m3u playlists/vidaa.xml \
                   playlists/samsung.m3u playlists/samsung.xml \
-                  playlists/whale.m3u playlists/whale.xml 2>/dev/null || true
+                  playlists/whale.m3u playlists/whale.xml \
+                  playlists/vizio.m3u playlists/vizio.xml 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
