@@ -182,8 +182,8 @@ jobs:
             -v \
             $EXTRA
 
-       - name: Normalize categories
-          run: python normalize_playlists.py --epg
+      - name: Normalize categories
+        run: python normalize_playlists.py --epg
 
       - name: Sanity-check outputs
         run: |
