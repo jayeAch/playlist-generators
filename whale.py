@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -33,7 +34,8 @@ EPG_DETAIL_URL = "https://rlaxx.zeasn.tv/livetv/api/device/browser/v1/epg/detail
 LOGO_BASE      = "https://d3b6luslimvglo.cloudfront.net/images/79/rlaxximages/channels-rescaled/icon-white"
 
 EPG_BATCH_SIZE     = 10
-EPG_DETAIL_WORKERS = 15
+EPG_DETAIL_WORKERS = 4      # keep low; 429s from shared CI IPs otherwise
+DETAIL_MAX_429     = 20     # consecutive 429s (after backoff) before giving up on enrichment
 
 HEADERS = {
     "User-Agent": (
@@ -84,12 +86,12 @@ def fill_url_macros(url: str) -> str:
     return MACRO_RE.sub("", url)
 
 
-def make_session() -> requests.Session:
+def make_session(workers: int = EPG_DETAIL_WORKERS) -> requests.Session:
     s = requests.Session()
     s.headers.update(HEADERS)
-    retry = Retry(total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504))
+    retry = Retry(total=3, backoff_factor=1, status_forcelist=(500, 502, 503, 504))
     s.mount("https://", HTTPAdapter(max_retries=retry, pool_connections=1,
-                                    pool_maxsize=EPG_DETAIL_WORKERS))
+                                    pool_maxsize=max(workers, 4)))
     return s
 
 
@@ -196,26 +198,62 @@ def fetch_epg(s: requests.Session, token: str, channels: list[dict], days: int) 
     return progs
 
 
-def enrich(s: requests.Session, token: str, progs: list[dict], hours: int) -> None:
+def enrich(s: requests.Session, token: str, progs: list[dict], hours: int,
+           workers: int = EPG_DETAIL_WORKERS, delay: float = 0.0) -> None:
     cutoff = datetime.now(timezone.utc).timestamp() + hours * 3600
     targets = {p["prgch_id"]: p for p in progs
                if p["prgch_id"] and p["start"].timestamp() < cutoff}
     if not targets:
         return
+    log.info("enriching %d programs with %d workers", len(targets), workers)
+
+    abort = threading.Event()
+    lock = threading.Lock()
+    state = {"consec_429": 0, "total_429": 0}
 
     def one(pid: str):
-        try:
-            r = s.get(f"{EPG_DETAIL_URL}/{pid}", headers={"token": token}, timeout=15)
+        if abort.is_set():
+            return pid, "skipped"
+        for attempt in range(3):
+            try:
+                r = s.get(f"{EPG_DETAIL_URL}/{pid}", headers={"token": token}, timeout=15)
+            except Exception:
+                return pid, None
             if r.status_code == 200:
-                return pid, r.json().get("data") or {}
-        except Exception:
-            pass
+                with lock:
+                    state["consec_429"] = 0
+                if delay:
+                    time.sleep(delay)
+                try:
+                    return pid, r.json().get("data") or {}
+                except ValueError:
+                    return pid, None
+            if r.status_code == 429:
+                with lock:
+                    state["total_429"] += 1
+                    state["consec_429"] += 1
+                    if state["consec_429"] >= DETAIL_MAX_429:
+                        if not abort.is_set():
+                            log.warning("too many 429s, skipping remaining detail requests")
+                        abort.set()
+                if abort.is_set():
+                    return pid, "skipped"
+                try:
+                    wait = float(r.headers.get("Retry-After", ""))
+                except ValueError:
+                    wait = 2.0 * (attempt + 1)
+                time.sleep(min(wait, 15))
+                continue
+            return pid, None
         return pid, None
 
-    ok = err = 0
-    with ThreadPoolExecutor(max_workers=EPG_DETAIL_WORKERS) as pool:
+    ok = err = skipped = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         for fut in as_completed([pool.submit(one, pid) for pid in targets]):
             pid, d = fut.result()
+            if d == "skipped":
+                skipped += 1
+                continue
             if d is None:
                 err += 1
                 continue
@@ -243,7 +281,8 @@ def enrich(s: requests.Session, token: str, progs: list[dict], hours: int) -> No
                 except (ValueError, TypeError):
                     pass
             ok += 1
-    log.info("detail enriched %d/%d (%d errors)", ok, len(targets), err)
+    log.info("detail enriched %d/%d (%d errors, %d skipped, %d 429s)",
+             ok, len(targets), err, skipped, state["total_429"])
 
 
 def xmltv_time(dt: datetime) -> str:
@@ -293,8 +332,12 @@ def main() -> int:
     ap.add_argument("--m3u", default="whale.m3u", help="playlist filename (relative to --out-dir)")
     ap.add_argument("--epg", default="whale.xml", help="XMLTV filename (relative to --out-dir)")
     ap.add_argument("--days", type=int, default=7, help="days of guide to fetch (default 7)")
-    ap.add_argument("--detail-hours", type=int, default=24,
+    ap.add_argument("--detail-hours", type=int, default=12,
                     help="enrich programs starting within N hours with descriptions/posters/episode info")
+    ap.add_argument("--detail-workers", type=int, default=EPG_DETAIL_WORKERS,
+                    help="concurrent detail requests (default %d)" % EPG_DETAIL_WORKERS)
+    ap.add_argument("--detail-delay", type=float, default=0.0,
+                    help="seconds each worker sleeps after a successful detail request")
     ap.add_argument("--no-detail", action="store_true", help="skip detail enrichment")
     ap.add_argument("--no-epg", action="store_true", help="playlist only")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -307,7 +350,7 @@ def main() -> int:
     m3u_path = os.path.join(args.out_dir, args.m3u)
     epg_path = os.path.join(args.out_dir, args.epg)
 
-    s = make_session()
+    s = make_session(args.detail_workers)
     try:
         token = get_token(s)
         channels = fetch_channels(s, token)
@@ -324,7 +367,7 @@ def main() -> int:
     if not args.no_epg:
         progs = fetch_epg(s, token, channels, args.days)
         if not args.no_detail and args.detail_hours > 0:
-            enrich(s, token, progs, args.detail_hours)
+            enrich(s, token, progs, args.detail_hours, args.detail_workers, args.detail_delay)
         write_xmltv(channels, progs, epg_path)
     return 0
 
