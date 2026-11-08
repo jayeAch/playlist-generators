@@ -182,6 +182,9 @@ jobs:
             -v \
             $EXTRA
 
+       - name: Normalize categories
+          run: python normalize_playlists.py --epg
+
       - name: Sanity-check outputs
         run: |
           for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u playlists/vizio.m3u; do
