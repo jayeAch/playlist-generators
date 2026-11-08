@@ -34,7 +34,7 @@ EPG_DETAIL_URL = "https://rlaxx.zeasn.tv/livetv/api/device/browser/v1/epg/detail
 LOGO_BASE      = "https://d3b6luslimvglo.cloudfront.net/images/79/rlaxximages/channels-rescaled/icon-white"
 
 EPG_BATCH_SIZE     = 10
-EPG_DETAIL_WORKERS = 1      # keep low; 429s from shared CI IPs otherwise
+EPG_DETAIL_WORKERS = 4      # keep low; 429s from shared CI IPs otherwise
 DETAIL_MAX_429     = 20     # consecutive 429s (after backoff) before giving up on enrichment
 
 HEADERS = {
@@ -198,51 +198,88 @@ def fetch_epg(s: requests.Session, token: str, channels: list[dict], days: int) 
     return progs
 
 
+class RateLimiter:
+    """Shared across workers. Spaces requests by `interval`; backs off on 429, recovers on success."""
+
+    def __init__(self, rate: float):
+        self.base = 1.0 / rate if rate > 0 else 0.0
+        self.interval = self.base
+        self.next_at = 0.0
+        self.lock = threading.Lock()
+
+    def wait(self) -> None:
+        with self.lock:
+            now = time.monotonic()
+            at = max(now, self.next_at)
+            self.next_at = at + self.interval
+        if at > now:
+            time.sleep(at - now)
+
+    def penalize(self, pause: float) -> None:
+        """429: double the spacing (max 5s) and hold all workers for `pause` seconds."""
+        with self.lock:
+            self.interval = min(max(self.interval * 2, 0.5), 5.0)
+            self.next_at = max(self.next_at, time.monotonic() + pause)
+
+    def success(self) -> None:
+        with self.lock:
+            if self.interval > self.base:
+                self.interval = max(self.base, self.interval * 0.97)
+
+
 def enrich(s: requests.Session, token: str, progs: list[dict], hours: int,
-           workers: int = EPG_DETAIL_WORKERS, delay: float = 0.0) -> None:
+           workers: int = EPG_DETAIL_WORKERS, rate: float = 2.0,
+           budget: float = 600.0) -> None:
     cutoff = datetime.now(timezone.utc).timestamp() + hours * 3600
-    targets = {p["prgch_id"]: p for p in progs
-               if p["prgch_id"] and p["start"].timestamp() < cutoff}
+    # soonest first, so a cut-off budget loses the least valuable (furthest-out) programs
+    ordered = sorted((p for p in progs if p["prgch_id"] and p["start"].timestamp() < cutoff),
+                     key=lambda p: p["start"])
+    targets = {p["prgch_id"]: p for p in ordered}
     if not targets:
         return
-    log.info("enriching %d programs with %d workers", len(targets), workers)
+    log.info("enriching %d programs: %d workers, %.1f req/s, %ds budget",
+             len(targets), workers, rate, budget)
 
+    limiter = RateLimiter(rate)
+    deadline = time.monotonic() + budget
     abort = threading.Event()
     lock = threading.Lock()
     state = {"consec_429": 0, "total_429": 0}
 
     def one(pid: str):
-        if abort.is_set():
+        if abort.is_set() or time.monotonic() > deadline:
+            abort.set()
             return pid, "skipped"
-        for attempt in range(3):
+        for _ in range(3):
+            limiter.wait()
             try:
                 r = s.get(f"{EPG_DETAIL_URL}/{pid}", headers={"token": token}, timeout=15)
             except Exception:
                 return pid, None
             if r.status_code == 200:
+                limiter.success()
                 with lock:
                     state["consec_429"] = 0
-                if delay:
-                    time.sleep(delay)
                 try:
                     return pid, r.json().get("data") or {}
                 except ValueError:
                     return pid, None
             if r.status_code == 429:
+                try:
+                    pause = float(r.headers.get("Retry-After", ""))
+                except ValueError:
+                    pause = 5.0
+                pause = min(max(pause, 2.0), 30.0)
+                limiter.penalize(pause)
                 with lock:
                     state["total_429"] += 1
                     state["consec_429"] += 1
                     if state["consec_429"] >= DETAIL_MAX_429:
                         if not abort.is_set():
-                            log.warning("too many 429s, skipping remaining detail requests")
+                            log.warning("too many consecutive 429s, skipping remaining detail requests")
                         abort.set()
                 if abort.is_set():
                     return pid, "skipped"
-                try:
-                    wait = float(r.headers.get("Retry-After", ""))
-                except ValueError:
-                    wait = 2.0 * (attempt + 1)
-                time.sleep(min(wait, 15))
                 continue
             return pid, None
         return pid, None
@@ -281,8 +318,8 @@ def enrich(s: requests.Session, token: str, progs: list[dict], hours: int,
                 except (ValueError, TypeError):
                     pass
             ok += 1
-    log.info("detail enriched %d/%d (%d errors, %d skipped, %d 429s)",
-             ok, len(targets), err, skipped, state["total_429"])
+    log.info("detail enriched %d/%d (%d errors, %d skipped, %d 429s, final interval %.2fs)",
+             ok, len(targets), err, skipped, state["total_429"], limiter.interval)
 
 
 def xmltv_time(dt: datetime) -> str:
@@ -336,8 +373,10 @@ def main() -> int:
                     help="enrich programs starting within N hours with descriptions/posters/episode info")
     ap.add_argument("--detail-workers", type=int, default=EPG_DETAIL_WORKERS,
                     help="concurrent detail requests (default %d)" % EPG_DETAIL_WORKERS)
-    ap.add_argument("--detail-delay", type=float, default=0.0,
-                    help="seconds each worker sleeps after a successful detail request")
+    ap.add_argument("--detail-rate", type=float, default=2.0,
+                    help="max detail requests/sec across all workers (default 2.0; adapts down on 429)")
+    ap.add_argument("--detail-budget", type=float, default=600.0,
+                    help="max seconds to spend on detail enrichment (default 600)")
     ap.add_argument("--no-detail", action="store_true", help="skip detail enrichment")
     ap.add_argument("--no-epg", action="store_true", help="playlist only")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -367,7 +406,8 @@ def main() -> int:
     if not args.no_epg:
         progs = fetch_epg(s, token, channels, args.days)
         if not args.no_detail and args.detail_hours > 0:
-            enrich(s, token, progs, args.detail_hours, args.detail_workers, args.detail_delay)
+            enrich(s, token, progs, args.detail_hours, args.detail_workers,
+                   args.detail_rate, args.detail_budget)
         write_xmltv(channels, progs, epg_path)
     return 0
 
