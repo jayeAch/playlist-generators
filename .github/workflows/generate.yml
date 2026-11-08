@@ -160,6 +160,7 @@ jobs:
             --out-dir playlists \
             --m3u whale.m3u \
             --epg whale.xml \
+            --detail-rate 1 \
             -v \
             $EXTRA
 
