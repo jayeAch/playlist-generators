@@ -217,10 +217,7 @@ jobs:
             --epg xumo.xml \
             -v \
             $EXTRA
-
-      - name: Normalize categories
-        run: python normalize_playlists.py --epg playlists/*.m3u
-
+            
       - name: Sanity-check outputs
         run: |
           for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u playlists/vizio.m3u playlists/localnow.m3u playlists/xumo.m3u; do
