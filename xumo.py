@@ -1,4 +1,31 @@
 # -*- coding: utf-8 -*-
+"""
+Standalone Xumo Play extractor (US, list 10006). Writes an M3U playlist and XMLTV guide.
+No credentials required. DRM channels are skipped.
+
+Usage:
+    python xumo.py
+    python xumo.py --out-dir playlists --m3u xumo.m3u --epg xumo.xml
+    python xumo.py --epg xumo_epg.xml.gz       # gzipped XMLTV if the name ends in .gz
+    python xumo.py --no-epg                    # playlist only
+    python xumo.py -v                          # debug logging
+
+Options:
+    --out-dir DIR   Output directory, created if missing       (default: playlists)
+    --m3u FILE      Playlist filename, relative to --out-dir   (default: xumo_playlist.m3u)
+    --epg FILE      XMLTV filename, relative to --out-dir      (default: xumo_epg.xml.gz)
+    --no-epg        Write the playlist only
+    -v, --verbose   Debug logging
+
+Notes:
+    - Stream URLs are resolved at generation time and go stale when a program changes,
+      so re-run on a schedule.
+    - Program titles are cached in <out-dir>/xumo_asset_titles.json; commit it so the
+      cache survives between runs.
+
+Deps: pip install requests
+"""
+import argparse
 import requests
 import json
 import os
@@ -76,7 +103,7 @@ API_DELAY_SECONDS = 0.10
 OUTPUT_DIR = "playlists"
 PLAYLIST_FILENAME = "xumo_playlist.m3u"
 EPG_FILENAME = "xumo_epg.xml.gz"
-TITLE_CACHE_FILENAME = "asset_titles.json"
+TITLE_CACHE_FILENAME = "xumo_asset_titles.json"
 REQUEST_TIMEOUT = 45
 
 # !!! GitHub Repo Info !!! (used to build the EPG URL written into the M3U; change if you fork)
@@ -97,7 +124,7 @@ ANDROID_TV_HEADERS = {'User-Agent': 'okhttp/4.9.3'}
 
 # --- Logging ---
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s',
     stream=sys.stdout,
 )
@@ -215,6 +242,22 @@ def save_gzipped_xml(tree, filepath):
         logging.info(f"Gzipped EPG XML file saved: {filepath}")
     except Exception as e:
         logging.error(f"Error writing gzipped EPG file {filepath}: {e}")
+
+
+def save_xml(tree, filepath):
+    try:
+        ET.indent(tree.getroot())
+        tree.write(filepath, encoding="utf-8", xml_declaration=True)
+        logging.info(f"XML file saved: {filepath}")
+    except Exception as e:
+        logging.error(f"Error writing XML file {filepath}: {e}")
+
+
+def save_epg(tree, filepath):
+    if filepath.endswith(".gz"):
+        save_gzipped_xml(tree, filepath)
+    else:
+        save_xml(tree, filepath)
 
 
 def save_m3u(content, filepath):
@@ -803,9 +846,9 @@ def generate_epg_xml(channel_list_with_streams, consolidated_epg_data):
     return ET.ElementTree(tv_element)
 
 
-def generate_m3u_playlist(channel_list_with_streams):
+def generate_m3u_playlist(channel_list_with_streams, epg_url=None):
     logging.info("Generating M3U playlist...")
-    playlist_parts = [f'#EXTM3U url-tvg="{EPG_RAW_URL}"\n']
+    playlist_parts = [f'#EXTM3U url-tvg="{epg_url}"\n' if epg_url else '#EXTM3U\n']
     added_count = 0
 
     def sort_key(channel):
@@ -840,56 +883,81 @@ def generate_m3u_playlist(channel_list_with_streams):
 
 # --- Main ---
 
-if __name__ == "__main__":
+def main():
+    global OUTPUT_DIR, PLAYLIST_FILENAME, EPG_FILENAME
+
+    ap = argparse.ArgumentParser(description="Xumo Play m3u + XMLTV extractor")
+    ap.add_argument("--out-dir", default=OUTPUT_DIR, help="output directory (created if missing)")
+    ap.add_argument("--m3u", default=PLAYLIST_FILENAME, help="playlist filename (relative to --out-dir)")
+    ap.add_argument("--epg", default=EPG_FILENAME, help="XMLTV filename (relative to --out-dir); .gz = gzipped")
+    ap.add_argument("--no-epg", action="store_true", help="playlist only")
+    ap.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    explicit_epg = args.epg != EPG_FILENAME
+    OUTPUT_DIR, PLAYLIST_FILENAME, EPG_FILENAME = args.out_dir, args.m3u, args.epg
+    # Relative filename when --epg is given (matches the other generators); the raw GitHub
+    # URL only for the default name.
+    if args.no_epg:
+        epg_url = None
+    else:
+        epg_url = EPG_FILENAME if explicit_epg else EPG_RAW_URL
+    m3u_path = os.path.join(OUTPUT_DIR, PLAYLIST_FILENAME)
+    epg_path = os.path.join(OUTPUT_DIR, EPG_FILENAME)
+
     logging.info(f"--- Starting Xumo Scraper (Primary List ID: {PRIMARY_LIST_ID}) ---")
     try:
         ensure_output_dir()
     except Exception as e:
         logging.error(f"Halting: cannot ensure output dir: {e}")
-        sys.exit(1)
+        return 1
 
     logging.info(f"Step 1: Getting channel metadata via Primary List endpoint ({PRIMARY_LIST_ID})...")
     primary_channel_list = get_channels_via_primary_list()
-
     if not primary_channel_list:
         logging.error("Failed to get primary channel list. Aborting.")
-        sys.exit(1)
+        return 1
 
     logging.info(f"Step 2: Fetching stream URLs via asset lookup for {len(primary_channel_list)} channels...")
-    final_channel_list_with_streams = fetch_stream_urls_via_asset_lookup(primary_channel_list)
+    channels = fetch_stream_urls_via_asset_lookup(primary_channel_list)
+    if not channels:
+        logging.error("No channels with stream URLs found.")
+        return 1
 
-    if not final_channel_list_with_streams:
-        logging.warning("No channels with stream URLs found. Generating empty files.")
-        save_m3u(f'#EXTM3U url-tvg="{EPG_RAW_URL}"\n', os.path.join(OUTPUT_DIR, PLAYLIST_FILENAME))
-        empty_root = ET.Element('tv')
-        save_gzipped_xml(ET.ElementTree(empty_root), os.path.join(OUTPUT_DIR, EPG_FILENAME))
-        sys.exit(0)
-
-    vod_style = [c for c in final_channel_list_with_streams if '/content/' in (c.get('stream_url') or '')]
+    vod_style = [c for c in channels if '/content/' in (c.get('stream_url') or '')]
     logging.info(f"{len(vod_style)} VOD-style channels detected (mode={VOD_STYLE_MODE}).")
     if VOD_STYLE_MODE == "drop":
         vod_ids = {c['id'] for c in vod_style}
-        final_channel_list_with_streams = [c for c in final_channel_list_with_streams if c['id'] not in vod_ids]
+        channels = [c for c in channels if c['id'] not in vod_ids]
     elif VOD_STYLE_MODE == "live":
         for c in vod_style:
             c['stream_url'] = VOD_LIVE_URL_TEMPLATE.format(channel_id=c['id'], did=uuid.uuid4())
     elif VOD_STYLE_MODE == "tag":
         for c in vod_style:
             c['group'] = VOD_GROUP_TITLE
+    logging.info(f"Proceeding with {len(channels)} channels with stream URLs.")
 
-    logging.info(f"Proceeding with {len(final_channel_list_with_streams)} channels with stream URLs.")
-
-    logging.info("Step 3: Fetching EPG data...")
-    epg_data = fetch_epg_data(final_channel_list_with_streams)
-
-    logging.info("Step 4: Generating EPG XML...")
-    epg_tree = generate_epg_xml(final_channel_list_with_streams, epg_data)
+    epg_tree = None
+    if not args.no_epg:
+        logging.info("Step 3: Fetching EPG data...")
+        epg_data = fetch_epg_data(channels)
+        logging.info("Step 4: Generating EPG XML...")
+        epg_tree = generate_epg_xml(channels, epg_data)
 
     logging.info("Step 5: Generating M3U playlist...")
-    m3u_content = generate_m3u_playlist(final_channel_list_with_streams)
+    m3u_content = generate_m3u_playlist(channels, epg_url)
 
     logging.info("Step 6: Saving files...")
-    save_m3u(m3u_content, os.path.join(OUTPUT_DIR, PLAYLIST_FILENAME))
-    save_gzipped_xml(epg_tree, os.path.join(OUTPUT_DIR, EPG_FILENAME))
+    save_m3u(m3u_content, m3u_path)
+    if epg_tree is not None:
+        save_epg(epg_tree, epg_path)
 
     logging.info("--- Xumo Scraper Finished Successfully ---")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
