@@ -76,36 +76,26 @@ class ScrapeSkipError(RuntimeError):
     pass
 
 
-try:
-    # Drop FastChannels' app/scrapers/category_utils.py next to this script
-    # (same folder) to get its full name-based category engine.
-    import category_utils as _cu
-
-    def category_for_channel(name: str, column_title: str | None) -> str | None:
-        return _cu.category_for_channel(name, column_title, "vidaa")
-
-    infer_category_from_name = _cu.infer_category_from_name
-except ImportError:
-    def category_for_channel(name: str, column_title: str | None) -> str | None:
-        if not column_title:
-            return None
-        if column_title in ("Movies", "Entertainment", "News & Opinion",
-                            "Sports", "Kids", "Music"):
-            return column_title
+def category_for_channel(name: str, column_title: str | None) -> str | None:
+    if not column_title:
         return None
+    if column_title in ("Movies", "Entertainment", "News & Opinion",
+                        "Sports", "Kids", "Music"):
+        return column_title
+    return None
 
 
-    def infer_category_from_name(name: str) -> str | None:
-        n = name.casefold()
-        if any(k in n for k in ("news", "weather", "cnn", "fox news")):
-            return "News"
-        if any(k in n for k in ("sport", "nfl", "nba", "mlb", "nhl")):
-            return "Sports"
-        if any(k in n for k in ("kid", "cartoon", "nick", "disney", "junior")):
-            return "Kids"
-        if any(k in n for k in ("music", "mtv", "vh1", "vevo")):
-            return "Music"
-        return "General"
+def infer_category_from_name(name: str) -> str | None:
+    n = name.casefold()
+    if any(k in n for k in ("news", "weather", "cnn", "fox news")):
+        return "News"
+    if any(k in n for k in ("sport", "nfl", "nba", "mlb", "nhl")):
+        return "Sports"
+    if any(k in n for k in ("kid", "cartoon", "nick", "disney", "junior")):
+        return "Kids"
+    if any(k in n for k in ("music", "mtv", "vh1", "vevo")):
+        return "Music"
+    return "General"
 
 
 def infer_language_from_metadata(name: str) -> str:
@@ -782,127 +772,4 @@ def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
 
 def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: Path) -> None:
     tv = ET.Element("tv", {
-        "generator-info-name": "vidaa-m3u-epg",
-        "generator-info-url": "https://www.vidaa.com/",
-        "source-info-name": "vidaa-m3u-epg",
-    })
-    for ch in channels:
-        channel_el = ET.SubElement(tv, "channel", {"id": ch.source_channel_id})
-        ET.SubElement(channel_el, "display-name").text = ch.name
-        if ch.logo_url:
-            ET.SubElement(channel_el, "icon", {"src": ch.logo_url})
-
-    cat_by_id = {ch.source_channel_id: ch.category for ch in channels if ch.category}
-    fmt = "%Y%m%d%H%M%S %z"
-    for prog in sorted(programs, key=lambda p: (p.source_channel_id, p.start_time)):
-        prog_el = ET.SubElement(tv, "programme", {
-            "start": prog.start_time.astimezone(timezone.utc).strftime(fmt),
-            "stop":  prog.end_time.astimezone(timezone.utc).strftime(fmt),
-            "channel": prog.source_channel_id,
-        })
-        ET.SubElement(prog_el, "title", {"lang": "en"}).text = prog.title
-        if prog.description:
-            ET.SubElement(prog_el, "desc", {"lang": "en"}).text = prog.description
-        cat = cat_by_id.get(prog.source_channel_id)
-        if cat:
-            ET.SubElement(prog_el, "category", {"lang": "en"}).text = cat
-        if prog.poster_url:
-            ET.SubElement(prog_el, "icon", {"src": prog.poster_url})
-
-    raw = ET.tostring(tv, encoding="utf-8")
-    pretty = minidom.parseString(raw).toprettyxml(indent="  ", encoding="utf-8")
-    path.write_bytes(pretty)
-    logger.info("Wrote %d programs to %s", len(programs), path)
-
-
-def _esc(value: str) -> str:
-    return value.replace('"', "'").replace("\n", " ")
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate Vidaa M3U playlist + XMLTV EPG, with DRM license proxy.")
-    p.add_argument("--out-dir", default=".", help="Output directory (default: .)")
-    p.add_argument("--m3u", default="vidaa.m3u", help="Playlist filename")
-    p.add_argument("--epg", default="vidaa.xml", help="EPG filename")
-    p.add_argument("--no-m3u", action="store_true", help="Skip playlist generation")
-    p.add_argument("--no-epg", action="store_true", help="Skip EPG generation")
-    p.add_argument("--cache-path", default=None,
-                   help="DRM param cache path (default: ~/.cache/vidaa_m3u_epg/drm_params.json)")
-    p.add_argument("--license-base", default=None,
-                   help="Optional. Base URL of the --serve proxy (e.g. http://192.168.1.5:8765). "
-                        "Default: no proxy; license URL + header are baked into the M3U")
-    p.add_argument("--max-res", choices=sorted(_RES_TO_BPS), default=None,
-                   help="Cap DRM stream resolution via Kodi inputstream.adaptive props")
-    p.add_argument("--max-mbps", type=float, default=None,
-                   help="Drop DRM video renditions above this bitrate (needs --manifest-base + --serve)")
-    p.add_argument("--max-height", type=int, default=None,
-                   help="Drop DRM video renditions taller than this, e.g. 720 (needs --manifest-base + --serve)")
-    p.add_argument("--manifest-base", default=None,
-                   help="Base URL of the --serve proxy used to serve filtered manifests, e.g. http://127.0.0.1:8765")
-    p.add_argument("--serve", action="store_true",
-                   help="Run the Widevine license proxy instead of generating files")
-    p.add_argument("--host", default="0.0.0.0", help="Proxy bind address (default: 0.0.0.0)")
-    p.add_argument("--port", type=int, default=_DEFAULT_PORT, help=f"Proxy port (default: {_DEFAULT_PORT})")
-    p.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
-    return p.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-
-    config: dict[str, Any] = {}
-    if args.cache_path:
-        config["cache_path"] = args.cache_path
-    scraper = VidaaScraper(config=config)
-
-    if args.serve:
-        serve(scraper, args.host, args.port)
-        return 0
-
-    out_dir = Path(args.out_dir).expanduser().resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    license_base = args.license_base.rstrip("/") if args.license_base else None
-
-    logger.info("Fetching channel catalogue…")
-    try:
-        channels = scraper.fetch_channels()
-    except Exception as exc:
-        logger.error("Channel fetch failed: %s", exc)
-        return 1
-    if not channels:
-        logger.error("No channels found; aborting.")
-        return 1
-
-    if not args.no_m3u:
-        manifest_base = args.manifest_base.rstrip("/") if args.manifest_base else None
-        manifest_qs = urlencode({k: v for k, v in (("max_mbps", args.max_mbps),
-                                                   ("max_height", args.max_height)) if v})
-        if manifest_base and not manifest_qs:
-            logger.warning("--manifest-base given without --max-mbps/--max-height; ignoring")
-            manifest_base = None
-        write_m3u(channels, out_dir / args.m3u, scraper, license_base, args.max_res,
-                  manifest_qs, manifest_base)
-
-    if not args.no_epg:
-        logger.info("Fetching EPG for %d channels…", len(channels))
-        try:
-            programs = scraper.fetch_epg(channels)
-        except ScrapeSkipError as exc:
-            logger.error("EPG skipped: %s", exc)
-            return 2
-        write_xmltv(channels, programs, out_dir / args.epg)
-
-    logger.info("Done.")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        "generator-info-name": "vida
