@@ -219,7 +219,7 @@ jobs:
             $EXTRA
 
       - name: Normalize categories
-        run: python normalize_playlists.py --epg
+        run: python normalize_playlists.py --epg playlists/*.m3u
 
       - name: Sanity-check outputs
         run: |
