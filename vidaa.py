@@ -770,6 +770,4 @@ def write_m3u(channels: list[ChannelData], path: Path, scraper: VidaaScraper,
                 f"proxy {license_base}" if license_base else "license baked in", path)
 
 
-def write_xmltv(channels: list[ChannelData], programs: list[ProgramData], path: Path) -> None:
-    tv = ET.Element("tv", {
-        "generator-info-name": "vida
+def write_xmltv(channels: list[ChannelData], programs: list[
