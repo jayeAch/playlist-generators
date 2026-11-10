@@ -23,7 +23,11 @@ Options:
                           backs off automatically on HTTP 429         (default: 2.0)
     --detail-budget SEC   Max seconds spent on enrichment, soonest
                           programs first; the rest are skipped        (default: 600)
-    --no-detail           Skip enrichment entirely
+    --detail-cache FILE   Detail cache filename, relative to --out-dir
+                          (default: whale_detail_cache.json). Commit it so
+                          it survives between runs.
+    --no-cache            Ignore and don't write the detail cache
+    --no-detail           Don't fetch new details (cached details still apply)
     --no-epg              Write the playlist only
     -v, --verbose         Debug logging
 
@@ -31,10 +35,15 @@ Notes:
     - Stream URL ad macros (did/session_id/cachebuster) are filled once at
       generation time, so URLs are only as fresh as the last run.
     - The detail endpoint is rate limited. If you see 429s, lower --detail-rate.
+    - Details are cached by prgchId. Cached details are applied to every airing of
+      that program (including ones outside --detail-hours), and only uncached
+      programs inside --detail-hours are fetched, so the cache fills over runs and a
+      raised --detail-hours costs little after the first run.
 
 Deps: pip install requests
 """
 import argparse
+import json
 import logging
 import os
 import re
@@ -59,6 +68,7 @@ LOGO_BASE      = "https://d3b6luslimvglo.cloudfront.net/images/79/rlaxximages/ch
 
 EPG_BATCH_SIZE     = 10
 EPG_DETAIL_WORKERS = 4      # keep low; 429s from shared CI IPs otherwise
+DETAIL_CACHE_FILE = "whale_detail_cache.json"
 DETAIL_MAX_429     = 20     # consecutive 429s (after backoff) before giving up on enrichment
 
 HEADERS = {
@@ -251,17 +261,89 @@ class RateLimiter:
                 self.interval = max(self.base, self.interval * 0.97)
 
 
+def load_cache(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        log.warning("could not read detail cache %s: %s", path, exc)
+        return {}
+
+
+def save_cache(path: str, cache: dict, live_ids: set) -> None:
+    out = {pid: e for pid, e in cache.items() if pid in live_ids}
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        log.info("wrote %s (%d entries)", path, len(out))
+    except Exception as exc:
+        log.warning("could not write detail cache %s: %s", path, exc)
+
+
+def parse_detail(d: dict) -> dict:
+    """Normalize a detail response into the fields we apply to a programme."""
+    e: dict = {}
+    if (desc := (d.get("prgDesc") or "").strip()):
+        e["desc"] = desc
+    imgs = d.get("images") or []
+    if imgs and (u := (imgs[0].get("pimgUrl") or "").strip()):
+        e["poster"] = u
+    if (rating := (d.get("prgRating") or "").strip()):
+        e["rating"] = rating
+    if (d.get("prgType") or "").upper() == "EPISODE":
+        series = (d.get("seriesTitle") or "").strip()
+        ep_title = (d.get("prgTitle") or "").strip()
+        if series:
+            e["title"] = series
+            if ep_title:
+                e["episode_title"] = ep_title
+        try:
+            if d.get("seasonNumber"):
+                e["season"] = int(d["seasonNumber"])
+            if d.get("episodeNumber"):
+                e["episode"] = int(d["episodeNumber"])
+        except (ValueError, TypeError):
+            pass
+    return e
+
+
 def enrich(s: requests.Session, token: str, progs: list[dict], hours: int,
            workers: int = EPG_DETAIL_WORKERS, rate: float = 2.0,
-           budget: float = 600.0) -> None:
+           budget: float = 600.0, cache: dict | None = None,
+           fetch: bool = True) -> None:
+    """Apply cached details to every airing; fetch uncached programs starting within `hours`."""
+    if cache is None:
+        cache = {}
+
+    groups: dict[str, list[dict]] = {}
+    for p in progs:
+        if p["prgch_id"]:
+            groups.setdefault(p["prgch_id"], []).append(p)
+
+    # cached details apply to every airing, in or out of the detail window
+    hits = 0
+    for pid, ps in groups.items():
+        if pid in cache:
+            hits += 1
+            for p in ps:
+                p.update(cache[pid])
+    log.info("detail cache: %d/%d programs cached", hits, len(groups))
+
+    if not fetch or hours <= 0:
+        return
+
     cutoff = datetime.now(timezone.utc).timestamp() + hours * 3600
     # soonest first, so a cut-off budget loses the least valuable (furthest-out) programs
-    ordered = sorted((p for p in progs if p["prgch_id"] and p["start"].timestamp() < cutoff),
-                     key=lambda p: p["start"])
-    targets = {p["prgch_id"]: p for p in ordered}
+    soonest = {pid: min(p["start"] for p in ps) for pid, ps in groups.items()}
+    targets = sorted((pid for pid in groups if pid not in cache
+                      and soonest[pid].timestamp() < cutoff),
+                     key=lambda pid: soonest[pid])
     if not targets:
         return
-    log.info("enriching %d programs: %d workers, %.1f req/s, %ds budget",
+    log.info("enriching %d uncached programs: %d workers, %.1f req/s, %ds budget",
              len(targets), workers, rate, budget)
 
     limiter = RateLimiter(rate)
@@ -316,31 +398,12 @@ def enrich(s: requests.Session, token: str, progs: list[dict], hours: int,
                 skipped += 1
                 continue
             if d is None:
-                err += 1
+                err += 1          # transient failure: not cached, retried next run
                 continue
-            if not d:
-                continue
-            p = targets[pid]
-            if (desc := (d.get("prgDesc") or "").strip()):
-                p["desc"] = desc
-            imgs = d.get("images") or []
-            if imgs and (u := (imgs[0].get("pimgUrl") or "").strip()):
-                p["poster"] = u
-            if (rating := (d.get("prgRating") or "").strip()):
-                p["rating"] = rating
-            if (d.get("prgType") or "").upper() == "EPISODE":
-                series = (d.get("seriesTitle") or "").strip()
-                ep_title = (d.get("prgTitle") or "").strip()
-                if series:
-                    p["title"] = series
-                    p["episode_title"] = ep_title or None
-                try:
-                    if d.get("seasonNumber"):
-                        p["season"] = int(d["seasonNumber"])
-                    if d.get("episodeNumber"):
-                        p["episode"] = int(d["episodeNumber"])
-                except (ValueError, TypeError):
-                    pass
+            entry = parse_detail(d)
+            cache[pid] = entry    # cache empty results too, so they aren't refetched every run
+            for p in groups[pid]:
+                p.update(entry)
             ok += 1
     log.info("detail enriched %d/%d (%d errors, %d skipped, %d 429s, final interval %.2fs)",
              ok, len(targets), err, skipped, state["total_429"], limiter.interval)
@@ -401,7 +464,11 @@ def main() -> int:
                     help="max detail requests/sec across all workers (default 2.0; adapts down on 429)")
     ap.add_argument("--detail-budget", type=float, default=600.0,
                     help="max seconds to spend on detail enrichment (default 600)")
-    ap.add_argument("--no-detail", action="store_true", help="skip detail enrichment")
+    ap.add_argument("--detail-cache", default=DETAIL_CACHE_FILE,
+                    help="detail cache filename (relative to --out-dir); commit it to persist")
+    ap.add_argument("--no-cache", action="store_true", help="ignore and don't write the detail cache")
+    ap.add_argument("--no-detail", action="store_true",
+                    help="don't fetch new details (cached details still apply)")
     ap.add_argument("--no-epg", action="store_true", help="playlist only")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
@@ -429,9 +496,15 @@ def main() -> int:
 
     if not args.no_epg:
         progs = fetch_epg(s, token, channels, args.days)
-        if not args.no_detail and args.detail_hours > 0:
+        cache_path = os.path.join(args.out_dir, args.detail_cache)
+        cache = {} if args.no_cache else load_cache(cache_path)
+        try:
             enrich(s, token, progs, args.detail_hours, args.detail_workers,
-                   args.detail_rate, args.detail_budget)
+                   args.detail_rate, args.detail_budget, cache=cache,
+                   fetch=not args.no_detail)
+        finally:
+            if not args.no_cache:
+                save_cache(cache_path, cache, {p["prgch_id"] for p in progs if p["prgch_id"]})
         write_xmltv(channels, progs, epg_path)
     return 0
 
