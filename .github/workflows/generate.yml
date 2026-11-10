@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + Roku M3U + EPG
+name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + EPG
 
 on:
   schedule:
@@ -217,26 +217,6 @@ jobs:
             --out-dir playlists \
             --m3u xumo.m3u \
             --epg xumo.xml \
-            -v \
-            $EXTRA
-
-      - name: Run Roku scraper
-        if: steps.fresh.outputs.roku_stale == 'true'
-        env:
-          PYTHONUNBUFFERED: "1"
-        run: |
-          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
-            EXTRA="--no-epg"
-          else
-            EXTRA=""
-          fi
-          python roku.py \
-            --out-dir playlists \
-            --include-dash \
-            --m3u roku.m3u \
-            --epg roku.xml \
-            --workers 1 \
-            --update-gracenote \
             -v \
             $EXTRA
 
