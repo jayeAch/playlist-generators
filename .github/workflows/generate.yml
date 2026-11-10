@@ -299,6 +299,7 @@ jobs:
                   playlists/localnow.m3u playlists/localnow.xml \
                   playlists/xumo.m3u playlists/xumo.xml \
                   playlists/roku.m3u playlists/roku.xml \
+                  playlists/roku_cache.json \
                   playlists/xumo_asset_titles.json \
                   playlists/whale_detail_cache.json 2>/dev/null || true
 
