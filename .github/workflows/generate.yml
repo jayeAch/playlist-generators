@@ -234,7 +234,7 @@ jobs:
             --out-dir playlists \
             --m3u roku.m3u \
             --epg roku.xml \
-            --workers 2 \
+            --workers 1 \
             --update-gracenote \
             -v \
             $EXTRA
