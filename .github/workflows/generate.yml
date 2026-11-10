@@ -91,7 +91,6 @@ jobs:
           check vizio
           check localnow
           check xumo
-          check roku
 
       - name: Run Adult Swim scraper
         if: steps.fresh.outputs.adultswim_stale == 'true'
