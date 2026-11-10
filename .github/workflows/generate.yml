@@ -235,6 +235,7 @@ jobs:
             --m3u roku.m3u \
             --epg roku.xml \
             --workers 4 \
+            --update-gracenote \
             -v \
             $EXTRA
 
@@ -300,6 +301,7 @@ jobs:
                   playlists/xumo.m3u playlists/xumo.xml \
                   playlists/roku.m3u playlists/roku.xml \
                   playlists/roku_cache.json \
+                  roku_gracenote.csv \
                   playlists/xumo_asset_titles.json \
                   playlists/whale_detail_cache.json 2>/dev/null || true
 
