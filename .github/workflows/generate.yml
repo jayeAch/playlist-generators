@@ -232,6 +232,7 @@ jobs:
           fi
           python roku.py \
             --out-dir playlists \
+            --include-dash \
             --m3u roku.m3u \
             --epg roku.xml \
             --workers 1 \
