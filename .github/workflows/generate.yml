@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo M3U + EPG
+name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + Roku M3U + EPG
 
 on:
   schedule:
@@ -91,6 +91,7 @@ jobs:
           check vizio
           check localnow
           check xumo
+          check roku
 
       - name: Run Adult Swim scraper
         if: steps.fresh.outputs.adultswim_stale == 'true'
@@ -218,15 +219,33 @@ jobs:
             --epg xumo.xml \
             -v \
             $EXTRA
-            
+
+      - name: Run Roku scraper
+        if: steps.fresh.outputs.roku_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python roku.py \
+            --out-dir playlists \
+            --m3u roku.m3u \
+            --epg roku.xml \
+            --workers 4 \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
-          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u playlists/vizio.m3u playlists/localnow.m3u playlists/xumo.m3u; do
+          for f in playlists/adultswim.m3u playlists/vidaa.m3u playlists/samsung.m3u playlists/whale.m3u playlists/vizio.m3u playlists/localnow.m3u playlists/xumo.m3u playlists/roku.m3u; do
             test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
             head -n 1 "$f" | grep -q '^#EXTM3U' \
               || { echo "::error::$f is not a valid M3U"; exit 1; }
           done
-          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/samsung.xml playlists/whale.xml playlists/vizio.xml playlists/localnow.xml playlists/xumo.xml; do
+          for f in playlists/adultswim.xml playlists/vidaa.xml playlists/samsung.xml playlists/whale.xml playlists/vizio.xml playlists/localnow.xml playlists/xumo.xml playlists/roku.xml; do
             if [ -f "$f" ]; then
               python - "$f" <<'PY'
           import sys, xml.etree.ElementTree as ET
@@ -257,8 +276,9 @@ jobs:
             [vizio]="${{ steps.fresh.outputs.vizio_stale }}"
             [localnow]="${{ steps.fresh.outputs.localnow_stale }}"
             [xumo]="${{ steps.fresh.outputs.xumo_stale }}"
+            [roku]="${{ steps.fresh.outputs.roku_stale }}"
           )
-          for src in adultswim vidaa samsung whale vizio localnow xumo; do
+          for src in adultswim vidaa samsung whale vizio localnow xumo roku; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
@@ -278,6 +298,7 @@ jobs:
                   playlists/vizio.m3u playlists/vizio.xml \
                   playlists/localnow.m3u playlists/localnow.xml \
                   playlists/xumo.m3u playlists/xumo.xml \
+                  playlists/roku.m3u playlists/roku.xml \
                   playlists/xumo_asset_titles.json \
                   playlists/whale_detail_cache.json 2>/dev/null || true
 
