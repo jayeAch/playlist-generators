@@ -99,7 +99,7 @@ VOD_LIVE_URL_TEMPLATE = (
 )
 
 # --- Script Settings ---
-API_DELAY_SECONDS = 0.10
+API_DELAY_SECONDS = 0.5
 OUTPUT_DIR = "playlists"
 PLAYLIST_FILENAME = "xumo_playlist.m3u"
 EPG_FILENAME = "xumo_epg.xml.gz"
