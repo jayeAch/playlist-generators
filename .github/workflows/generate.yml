@@ -164,6 +164,7 @@ jobs:
             --m3u whale.m3u \
             --epg whale.xml \
             --detail-rate 1 \
+            --detail-hours 48 \
             -v \
             $EXTRA
 
@@ -277,7 +278,8 @@ jobs:
                   playlists/vizio.m3u playlists/vizio.xml \
                   playlists/localnow.m3u playlists/localnow.xml \
                   playlists/xumo.m3u playlists/xumo.xml \
-                  playlists/xumo_asset_titles.json 2>/dev/null || true
+                  playlists/xumo_asset_titles.json \
+                  playlists/whale_detail_cache.json 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
