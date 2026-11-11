@@ -142,7 +142,7 @@ jobs:
           # Never put a "# comment" on a line ending in "\" below; it breaks the continuation.
           python samsung.py \
             --regions us \
-            --drm include \
+            --drm exclude \
             --out-dir playlists \
             --m3u samsung.m3u \
             --epg samsung.xml \
