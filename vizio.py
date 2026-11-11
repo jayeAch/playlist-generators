@@ -44,7 +44,7 @@ CHANNELS_URL     = "https://watchfreeplus-epg-prod.smartcasttv.com/api/channels"
 AIRINGS_BASE_URL = "https://watchfreeplus-epg-prod.smartcasttv.com/api/airings/"
 
 UA = "okhttp/4.12.0"
-CHUNK_SIZE = 50  # channels per bulk airings request when backfilling
+CHUNK_SIZE = 25  # channels per bulk airings request when backfilling
 
 # Privacy-neutral ad macro defaults matching the app's anonymous WatchFree DI
 DEFAULT_MACROS = {
