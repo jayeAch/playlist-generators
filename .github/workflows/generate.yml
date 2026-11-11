@@ -258,7 +258,7 @@ jobs:
             [localnow]="${{ steps.fresh.outputs.localnow_stale }}"
             [xumo]="${{ steps.fresh.outputs.xumo_stale }}"
           )
-          for src in adultswim vidaa samsung whale vizio localnow xumo roku; do
+          for src in adultswim vidaa samsung whale vizio localnow xumo; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
             m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
             epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
