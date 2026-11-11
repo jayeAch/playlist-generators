@@ -44,6 +44,7 @@ CHANNELS_URL     = "https://watchfreeplus-epg-prod.smartcasttv.com/api/channels"
 AIRINGS_BASE_URL = "https://watchfreeplus-epg-prod.smartcasttv.com/api/airings/"
 
 UA = "okhttp/4.12.0"
+CHUNK_SIZE = 50  # channels per bulk airings request when backfilling
 
 # Privacy-neutral ad macro defaults matching the app's anonymous WatchFree DI
 DEFAULT_MACROS = {
@@ -206,7 +207,7 @@ def fetch_airings_bulk(s, channels, start, end, station_map) -> list[dict]:
 
 
 def fetch_airings_per_channel(s, channels, start, end, station_map) -> list[dict]:
-    log.info("falling back to per-channel EPG")
+    log.info("per-channel EPG fetch for %d channels", len(channels))
     progs = []
     for i, ch in enumerate(channels, 1):
         params = {"start": start, "end": end, "startChannel": ch["_id"], "channelCount": 1}
@@ -256,8 +257,28 @@ def fetch_epg(s, channels, hours: int) -> list[dict]:
 
     station_map = {ch["airingsKey"]: ch["_id"] for ch in channels if ch.get("airingsKey")}
     progs = fetch_airings_bulk(s, channels, start, end, station_map)
-    if not progs:
-        progs = fetch_airings_per_channel(s, channels, start, end, station_map)
+
+    # The bulk call can succeed yet silently truncate (channels past a server-side
+    # cap get nothing), so the per-channel fallback never fires. Backfill any
+    # channel that came back empty, with chunked bulk requests first, then singly.
+    def missing():
+        have = {p["chl_id"] for p in progs}
+        return [ch for ch in channels if ch["_id"] not in have]
+
+    miss = missing()
+    if miss and progs:
+        log.info("bulk EPG left %d/%d channels empty; retrying in chunks of %d",
+                 len(miss), len(channels), CHUNK_SIZE)
+        for i in range(0, len(miss), CHUNK_SIZE):
+            progs.extend(fetch_airings_bulk(s, miss[i:i + CHUNK_SIZE], start, end, station_map))
+        miss = missing()
+    if miss:
+        log.info("%d channels still empty; fetching individually", len(miss))
+        progs.extend(fetch_airings_per_channel(s, miss, start, end, station_map))
+        miss = missing()
+    if miss:
+        log.warning("%d channels have no guide data upstream: %s", len(miss),
+                    ", ".join(ch["_name"] for ch in miss[:10]))
     progs = clean_programs(progs)
     log.info("%d EPG entries", len(progs))
     return progs
