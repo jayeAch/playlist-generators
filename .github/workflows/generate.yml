@@ -196,6 +196,7 @@ jobs:
             EXTRA=""
           fi
           python localnow.py \
+            --workers 1
             --out-dir playlists \
             --m3u localnow.m3u \
             --epg localnow.xml \
