@@ -67,7 +67,7 @@ EPG_DETAIL_URL = "https://rlaxx.zeasn.tv/livetv/api/device/browser/v1/epg/detail
 LOGO_BASE      = "https://d3b6luslimvglo.cloudfront.net/images/79/rlaxximages/channels-rescaled/icon-white"
 
 EPG_BATCH_SIZE     = 10
-EPG_DETAIL_WORKERS = 2      # keep low; 429s from shared CI IPs otherwise
+EPG_DETAIL_WORKERS = 1      # keep low; 429s from shared CI IPs otherwise
 DETAIL_CACHE_FILE = "whale_detail_cache.json"
 DETAIL_MAX_429     = 20     # consecutive 429s (after backoff) before giving up on enrichment
 
