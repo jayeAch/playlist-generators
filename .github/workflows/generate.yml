@@ -2,7 +2,7 @@ name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + LG + EPG
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */3 * * *"
   workflow_dispatch:
     inputs:
       skip_epg:
@@ -197,6 +197,7 @@ jobs:
             EXTRA=""
           fi
           python localnow.py \
+            --city "Myrtle Beach" \
             --workers 1 \
             --out-dir playlists \
             --m3u localnow.m3u \
