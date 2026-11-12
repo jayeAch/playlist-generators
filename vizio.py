@@ -219,7 +219,7 @@ def fetch_airings_per_channel(s, channels, start, end, station_map) -> list[dict
             log.warning("EPG fetch failed for %s: %s", ch["_id"], exc)
         if i % 50 == 0:
             log.info("EPG %d/%d channels", i, len(channels))
-        time.sleep(0.1)
+        time.sleep(0.5)
     return progs
 
 
