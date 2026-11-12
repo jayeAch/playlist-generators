@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Set up Python
@@ -75,7 +75,15 @@ jobs:
               echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
               return
             fi
-            local age=$(( NOW - $(stat -c %Y "$file") ))
+            # Checkout resets mtime to "now", so use the last commit time instead.
+            local last
+            last=$(git log -1 --format=%ct -- "$file")
+            if [ -z "$last" ]; then
+              echo "$name=stale (never committed)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            local age=$(( NOW - last ))
             if [ "$age" -ge "$THRESHOLD" ]; then
               echo "$name=stale (age ${age}s)"
               echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
