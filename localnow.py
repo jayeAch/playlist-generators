@@ -50,6 +50,7 @@ import os
 import re
 import sys
 import xml.etree.ElementTree as ET
+import threading, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urljoin
@@ -100,6 +101,20 @@ EP_ONLY_RE = re.compile(
 INVALID_PROGRAM_IDS = {"epg-feed-not-available"}
 
 log = logging.getLogger("localnow")
+
+import threading, time
+
+MIN_INTERVAL = 1.5  # seconds between playback-URL requests, across all workers
+_throttle_lock = threading.Lock()
+_last_call = [0.0]
+
+
+def throttle():
+    with _throttle_lock:
+        wait = MIN_INTERVAL - (time.monotonic() - _last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+        _last_call[0] = time.monotonic()
 
 
 class GeoBlocked(RuntimeError):
