@@ -82,7 +82,7 @@ def expand_macros(url: str, macros: dict) -> str:
 def make_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"User-Agent": UA, "Accept": "application/json"})
-    retry = Retry(total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504))
+    retry = Retry(total=3, backoff_factor=5, status_forcelist=(429, 500, 502, 503, 504))
     s.mount("https://", HTTPAdapter(max_retries=retry))
     return s
 
