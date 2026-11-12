@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       force:
-        description: "Force rebuild even if outputs are < 6 h old"
+        description: "Force rebuild even if outputs are < 3 h old"
         type: boolean
         default: false
 
