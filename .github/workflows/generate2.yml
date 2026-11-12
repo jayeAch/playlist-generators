@@ -1,0 +1,588 @@
+name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + LG + EPG
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      skip_epg:
+        description: "Skip EPG generation (M3U only)"
+        type: boolean
+        default: false
+      force:
+        description: "Force rebuild even if outputs are < 6 h old"
+        type: boolean
+        default: false
+
+concurrency:
+  group: m3u-epg
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Whale (~10 min in the last log)
+  # ---------------------------------------------------------------------------
+  whale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCES: "whale"
+      EXTRA_FILES: "playlists/whale_detail_cache.json"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare output directory
+        run: mkdir -p playlists
+
+      - name: Check freshness
+        id: fresh
+        run: |
+          FORCE="${{ github.event.inputs.force }}"
+          THRESHOLD=$((6 * 3600))
+          NOW=$(date +%s)
+          check() {
+            local name="$1"
+            local file="playlists/$name.m3u"
+            if [ "$FORCE" = "true" ]; then
+              echo "$name=stale (force)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            if [ ! -s "$file" ]; then
+              echo "$name=stale (missing)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            # Checkout resets mtime to "now", so use the last commit time instead.
+            local last
+            last=$(git log -1 --format=%ct -- "$file")
+            if [ -z "$last" ]; then
+              echo "$name=stale (never committed)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            local age=$(( NOW - last ))
+            if [ "$age" -ge "$THRESHOLD" ]; then
+              echo "$name=stale (age ${age}s)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=fresh (age ${age}s)"
+              echo "${name}_stale=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          for s in $SOURCES; do check "$s"; done
+
+      - name: Run Whale TV+ scraper
+        if: steps.fresh.outputs.whale_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python whale.py \
+            --out-dir playlists \
+            --m3u whale.m3u \
+            --epg whale.xml \
+            --detail-rate 1 \
+            --detail-hours 48 \
+            -v \
+            $EXTRA
+
+      - name: Sanity-check outputs
+        run: |
+          for src in $SOURCES; do
+            f="playlists/$src.m3u"
+            test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
+            head -n 1 "$f" | grep -q '^#EXTM3U' \
+              || { echo "::error::$f is not a valid M3U"; exit 1; }
+            x="playlists/$src.xml"
+            if [ -f "$x" ]; then
+              python - "$x" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          path = sys.argv[1]
+          try:
+              tree = ET.parse(path)
+          except Exception as exc:
+              print(f"::error::{path} failed to parse: {exc}")
+              sys.exit(1)
+          root = tree.getroot()
+          print(f"{path}: {len(root.findall('channel'))} channels, "
+                f"{len(root.findall('programme'))} programmes")
+          PY
+            fi
+          done
+
+      - name: Show summary
+        run: |
+          echo "### Refresh summary (whale)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source | Rebuilt | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          declare -A rebuilt=(
+            [whale]="${{ steps.fresh.outputs.whale_stale }}"
+          )
+          for src in $SOURCES; do
+            ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
+            m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
+            epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
+            state=$([ "${rebuilt[$src]}" = "true" ] && echo "yes" || echo "skipped (fresh)")
+            echo "| $src | $state | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Commit updated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for src in $SOURCES; do
+            for f in "playlists/$src.m3u" "playlists/$src.xml"; do
+              [ -f "$f" ] && git add "$f"
+            done
+          done
+          for f in $EXTRA_FILES; do
+            [ -f "$f" ] && git add "$f"
+          done
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh whale M3U + EPG [skip ci]"
+          for i in 1 2 3 4 5; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            echo "Push attempt $i failed, retrying…"
+            sleep $(( (RANDOM % 8) + 3 ))
+          done
+
+  # ---------------------------------------------------------------------------
+  # Xumo (~6.5 min in the last log)
+  # ---------------------------------------------------------------------------
+  xumo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCES: "xumo"
+      EXTRA_FILES: "playlists/xumo_asset_titles.json"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare output directory
+        run: mkdir -p playlists
+
+      - name: Check freshness
+        id: fresh
+        run: |
+          FORCE="${{ github.event.inputs.force }}"
+          THRESHOLD=$((6 * 3600))
+          NOW=$(date +%s)
+          check() {
+            local name="$1"
+            local file="playlists/$name.m3u"
+            if [ "$FORCE" = "true" ]; then
+              echo "$name=stale (force)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            if [ ! -s "$file" ]; then
+              echo "$name=stale (missing)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            # Checkout resets mtime to "now", so use the last commit time instead.
+            local last
+            last=$(git log -1 --format=%ct -- "$file")
+            if [ -z "$last" ]; then
+              echo "$name=stale (never committed)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            local age=$(( NOW - last ))
+            if [ "$age" -ge "$THRESHOLD" ]; then
+              echo "$name=stale (age ${age}s)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=fresh (age ${age}s)"
+              echo "${name}_stale=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          for s in $SOURCES; do check "$s"; done
+
+      - name: Run Xumo scraper
+        if: steps.fresh.outputs.xumo_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python xumo.py \
+            --out-dir playlists \
+            --m3u xumo.m3u \
+            --epg xumo.xml \
+            -v \
+            $EXTRA
+
+      - name: Sanity-check outputs
+        run: |
+          for src in $SOURCES; do
+            f="playlists/$src.m3u"
+            test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
+            head -n 1 "$f" | grep -q '^#EXTM3U' \
+              || { echo "::error::$f is not a valid M3U"; exit 1; }
+            x="playlists/$src.xml"
+            if [ -f "$x" ]; then
+              python - "$x" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          path = sys.argv[1]
+          try:
+              tree = ET.parse(path)
+          except Exception as exc:
+              print(f"::error::{path} failed to parse: {exc}")
+              sys.exit(1)
+          root = tree.getroot()
+          print(f"{path}: {len(root.findall('channel'))} channels, "
+                f"{len(root.findall('programme'))} programmes")
+          PY
+            fi
+          done
+
+      - name: Show summary
+        run: |
+          echo "### Refresh summary (xumo)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source | Rebuilt | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          declare -A rebuilt=(
+            [xumo]="${{ steps.fresh.outputs.xumo_stale }}"
+          )
+          for src in $SOURCES; do
+            ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
+            m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
+            epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
+            state=$([ "${rebuilt[$src]}" = "true" ] && echo "yes" || echo "skipped (fresh)")
+            echo "| $src | $state | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Commit updated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for src in $SOURCES; do
+            for f in "playlists/$src.m3u" "playlists/$src.xml"; do
+              [ -f "$f" ] && git add "$f"
+            done
+          done
+          for f in $EXTRA_FILES; do
+            [ -f "$f" ] && git add "$f"
+          done
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh xumo M3U + EPG [skip ci]"
+          for i in 1 2 3 4 5; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            echo "Push attempt $i failed, retrying…"
+            sleep $(( (RANDOM % 8) + 3 ))
+          done
+
+  # ---------------------------------------------------------------------------
+  # Everything else (~3 min total in the last log, Vidaa ~2 min of that)
+  # ---------------------------------------------------------------------------
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCES: "adultswim vidaa samsung vizio localnow lgtv"
+      EXTRA_FILES: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore Vidaa DRM cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vidaa_m3u_epg
+          key: vidaa-drm-${{ github.run_id }}
+          restore-keys: vidaa-drm-
+
+      - name: Prepare output directory
+        run: mkdir -p playlists
+
+      - name: Check freshness
+        id: fresh
+        run: |
+          FORCE="${{ github.event.inputs.force }}"
+          THRESHOLD=$((6 * 3600))
+          NOW=$(date +%s)
+          check() {
+            local name="$1"
+            local file="playlists/$name.m3u"
+            if [ "$FORCE" = "true" ]; then
+              echo "$name=stale (force)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            if [ ! -s "$file" ]; then
+              echo "$name=stale (missing)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            # Checkout resets mtime to "now", so use the last commit time instead.
+            local last
+            last=$(git log -1 --format=%ct -- "$file")
+            if [ -z "$last" ]; then
+              echo "$name=stale (never committed)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+              return
+            fi
+            local age=$(( NOW - last ))
+            if [ "$age" -ge "$THRESHOLD" ]; then
+              echo "$name=stale (age ${age}s)"
+              echo "${name}_stale=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=fresh (age ${age}s)"
+              echo "${name}_stale=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          for s in $SOURCES; do check "$s"; done
+
+      - name: Run Adult Swim scraper
+        if: steps.fresh.outputs.adultswim_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python adultswim.py \
+            --out-dir playlists \
+            --m3u adultswim.m3u \
+            --epg adultswim.xml \
+            --workers 8 \
+            -v \
+            $EXTRA
+
+      - name: Run Vidaa scraper
+        if: steps.fresh.outputs.vidaa_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python vidaa.py \
+            --out-dir playlists \
+            --m3u vidaa.m3u \
+            --epg vidaa.xml \
+            -v \
+            $EXTRA
+
+      - name: Run Samsung scraper
+        if: steps.fresh.outputs.samsung_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          # NOTE: --regions takes a comma-separated list with NO spaces (us,ca,gb).
+          # "us, ca, gb" gets split by bash into separate arguments and the script fails.
+          # Never put a "# comment" on a line ending in "\" below; it breaks the continuation.
+          python samsung.py \
+            --regions us \
+            --drm include \
+            --out-dir playlists \
+            --m3u samsung.m3u \
+            --epg samsung.xml \
+            -v \
+            $EXTRA
+
+      - name: Run Vizio scraper
+        if: steps.fresh.outputs.vizio_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python vizio.py \
+            --out-dir playlists \
+            --m3u vizio.m3u \
+            --epg vizio.xml \
+            -v \
+            $EXTRA
+
+      - name: Run Local Now scraper
+        if: steps.fresh.outputs.localnow_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python localnow.py \
+            --city "Myrtle Beach" \
+            --workers 1 \
+            --out-dir playlists \
+            --m3u localnow.m3u \
+            --epg localnow.xml \
+            -v \
+            $EXTRA
+
+      - name: Run LG Channels scraper
+        if: steps.fresh.outputs.lgtv_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python lgtv.py \
+            --out-dir playlists \
+            --m3u lgtv.m3u \
+            --epg lgtv.xml \
+            -v \
+            $EXTRA
+
+      - name: Sanity-check outputs
+        run: |
+          for src in $SOURCES; do
+            f="playlists/$src.m3u"
+            test -s "$f" || { echo "::error::$f is empty or missing"; exit 1; }
+            head -n 1 "$f" | grep -q '^#EXTM3U' \
+              || { echo "::error::$f is not a valid M3U"; exit 1; }
+            x="playlists/$src.xml"
+            if [ -f "$x" ]; then
+              python - "$x" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          path = sys.argv[1]
+          try:
+              tree = ET.parse(path)
+          except Exception as exc:
+              print(f"::error::{path} failed to parse: {exc}")
+              sys.exit(1)
+          root = tree.getroot()
+          print(f"{path}: {len(root.findall('channel'))} channels, "
+                f"{len(root.findall('programme'))} programmes")
+          PY
+            fi
+          done
+
+      - name: Show summary
+        run: |
+          echo "### Refresh summary (fast sources)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source | Rebuilt | Channels | M3U bytes | EPG bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          declare -A rebuilt=(
+            [adultswim]="${{ steps.fresh.outputs.adultswim_stale }}"
+            [vidaa]="${{ steps.fresh.outputs.vidaa_stale }}"
+            [samsung]="${{ steps.fresh.outputs.samsung_stale }}"
+            [vizio]="${{ steps.fresh.outputs.vizio_stale }}"
+            [localnow]="${{ steps.fresh.outputs.localnow_stale }}"
+            [lgtv]="${{ steps.fresh.outputs.lgtv_stale }}"
+          )
+          for src in $SOURCES; do
+            ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
+            m3u=$(wc -c < "playlists/$src.m3u" 2>/dev/null || echo 0)
+            epg=$([ -f "playlists/$src.xml" ] && wc -c < "playlists/$src.xml" || echo 0)
+            state=$([ "${rebuilt[$src]}" = "true" ] && echo "yes" || echo "skipped (fresh)")
+            echo "| $src | $state | \`$ch\` | \`$m3u\` | \`$epg\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Commit updated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for src in $SOURCES; do
+            for f in "playlists/$src.m3u" "playlists/$src.xml"; do
+              [ -f "$f" ] && git add "$f"
+            done
+          done
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh M3U + EPG [skip ci]"
+          for i in 1 2 3 4 5; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            echo "Push attempt $i failed, retrying…"
+            sleep $(( (RANDOM % 8) + 3 ))
+          done
