@@ -104,7 +104,7 @@ log = logging.getLogger("localnow")
 
 import threading, time
 
-MIN_INTERVAL = 1.5  # seconds between playback-URL requests, across all workers
+MIN_INTERVAL = 2.0  # seconds between playback-URL requests, across all workers
 _throttle_lock = threading.Lock()
 _last_call = [0.0]
 
