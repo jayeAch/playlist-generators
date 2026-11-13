@@ -131,6 +131,7 @@ _MEDIAS_BATCH_SIZE     = 5
 _EPG_STEP_HOURS        = 12
 _EPG_HORIZON_DAYS      = 5
 _EPG_CIRCUIT_THRESHOLD = 5
+_EPG_FULL_REFRESH_SECS = 24 * 3600   # full EPG refetch at most this stale; otherwise incremental
 _SPANISH_COLUMN_TITLE  = "In Spanish"
 _DRM_PARAM_TTL         = 30 * 60
 _DEFAULT_PORT          = 8765
@@ -425,65 +426,175 @@ class VidaaScraper(BaseScraper):
 
     # -- EPG ----------------------------------------------------------------
 
+    # -- persisted EPG cache ------------------------------------------------
+
+    def _epg_cache_path(self) -> Path:
+        return self._cache_path().with_name("epg_cache.json")
+
+    def _load_epg_cache(self) -> dict | None:
+        path = self._epg_cache_path()
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text("utf-8"))
+            if (not isinstance(raw, dict) or raw.get("v") != 1
+                    or not isinstance(raw.get("programs"), dict)
+                    or not isinstance(raw.get("channels"), list)):
+                return None
+            float(raw["full_at"])
+            float(raw["covered_until"])
+            return raw
+        except Exception as exc:
+            logger.debug("[vidaa] ignoring unreadable EPG cache %s: %s", path, exc)
+            return None
+
+    def _save_epg_cache(self, full_at: float, covered_until: float, channel_ids: set[str],
+                        seen_ids: set[str], programs: dict[str, dict]) -> None:
+        path = self._epg_cache_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({
+                "v": 1,
+                "full_at": full_at,
+                "covered_until": covered_until,
+                "channels": sorted(channel_ids),
+                "seen": sorted(seen_ids),
+                "programs": programs,
+            }), encoding="utf-8")
+            tmp.replace(path)
+        except Exception:
+            logger.debug("[vidaa] could not persist EPG cache", exc_info=True)
+
+    # -- EPG ----------------------------------------------------------------
+
     def fetch_epg(self, channels: list[ChannelData]) -> list[ProgramData]:
+        """Fetches the guide, reusing a persisted cache between runs.
+
+        Full mode (no/old/invalid cache, or config["epg_full"]): every
+        relatedDate window for every channel, as before.
+        Incremental mode: for channels already in the cache only the first
+        window (refreshes now) plus any window beyond what the cache already
+        covers; channels new to the cache get every window. Programmes that
+        have ended are pruned. A full refetch happens at least every
+        _EPG_FULL_REFRESH_SECS so schedule changes can't linger.
+        """
         if not channels:
             return []
 
-        ids = [int(ch.source_channel_id) for ch in channels]
+        ids = [ch.source_channel_id for ch in channels]
         now = int(time.time())
+        step_secs = _EPG_STEP_HOURS * 3600
         steps = (_EPG_HORIZON_DAYS * 24) // _EPG_STEP_HOURS
-        related_dates = [now + step * _EPG_STEP_HOURS * 3600 for step in range(steps)]
-        batches = list(_chunk(ids, _MEDIAS_BATCH_SIZE))
+        related_dates = [now + step * step_secs for step in range(steps)]
 
-        programs_by_key: dict[tuple[str, int], ProgramData] = {}
+        cache = None if self.config.get("epg_full") else self._load_epg_cache()
+        if cache and (now - float(cache["full_at"])) >= _EPG_FULL_REFRESH_SECS:
+            cache = None
+
+        # programs: "cid|sid" -> serialized programme
+        programs: dict[str, dict] = {}
         seen_channel_ids: set[str] = set()
+        if cache:
+            cached_ids = set(cache["channels"])
+            seen_channel_ids = set(cache.get("seen") or []) & set(ids)
+            for k, p in cache["programs"].items():
+                if p.get("cid") in cached_ids and p.get("end", 0) > now * 1000 and p["cid"] in ids:
+                    programs[k] = p
+            covered_until = float(cache["covered_until"])
+            full_at = float(cache["full_at"])
+            old_ids = [i for i in ids if i in cached_ids]
+            new_ids = [i for i in ids if i not in cached_ids]
+            old_windows = [rd for n, rd in enumerate(related_dates) if n == 0 or rd > covered_until]
+            plan = [(old_ids, old_windows), (new_ids, related_dates)]
+            logger.info("[vidaa] EPG incremental: %d cached channels x %d window(s), %d new x %d, "
+                        "%d cached programmes reused", len(old_ids), len(old_windows),
+                        len(new_ids), len(related_dates), len(programs))
+        else:
+            covered_until = 0.0
+            full_at = float(now)
+            plan = [(ids, related_dates)]
+            logger.info("[vidaa] EPG full fetch: %d channels x %d windows", len(ids), len(related_dates))
+
         consecutive_failures = 0
         circuit_open = False
-        for related_date in related_dates:
-            for batch in batches:
-                if circuit_open:
-                    continue
-                try:
-                    data = self._fetch_medias_info(batch, related_date)
-                    consecutive_failures = 0
-                except Exception as exc:
-                    consecutive_failures += 1
-                    logger.warning("[vidaa] EPG batch failed (relatedDate=%s, ids=%s): %s",
-                                   related_date, batch, exc)
-                    if consecutive_failures >= _EPG_CIRCUIT_THRESHOLD:
-                        circuit_open = True
-                        logger.error("[vidaa] %d consecutive EPG batch failures — "
-                                     "aborting remaining requests", consecutive_failures)
-                    continue
-
-                for media in data.get("medias") or []:
-                    cid = media.get("id")
-                    if cid is None:
+        failed_windows: set[int] = set()
+        attempted_windows: set[int] = set()
+        fetched_any = False
+        for chan_ids, windows in plan:
+            batches = list(_chunk([int(i) for i in chan_ids], _MEDIAS_BATCH_SIZE))
+            for related_date in windows:
+                for batch in batches:
+                    if circuit_open:
+                        failed_windows.add(related_date)
                         continue
-                    seen_channel_ids.add(str(cid))
-                    for sched in (media.get("channelInfo") or {}).get("scheduleList") or []:
-                        title = (sched.get("scheduleName") or "").strip()
-                        start_ms, end_ms = sched.get("startTime"), sched.get("endTime")
-                        if not title or not start_ms or not end_ms:
-                            continue
-                        start_dt = datetime.fromtimestamp(start_ms / 1000, tz=UTC)
-                        end_dt   = datetime.fromtimestamp(end_ms / 1000, tz=UTC)
-                        if end_dt <= start_dt:
-                            continue
-                        key = (str(cid), sched.get("scheduleId") or start_ms)
-                        programs_by_key[key] = ProgramData(
-                            source_channel_id = str(cid),
-                            title             = title,
-                            start_time        = start_dt,
-                            end_time          = end_dt,
-                            description       = (sched.get("summary") or "").strip() or None,
-                            poster_url        = sched.get("recommendPic"),
-                        )
+                    attempted_windows.add(related_date)
+                    try:
+                        data = self._fetch_medias_info(batch, related_date)
+                        consecutive_failures = 0
+                        fetched_any = True
+                    except Exception as exc:
+                        consecutive_failures += 1
+                        failed_windows.add(related_date)
+                        logger.warning("[vidaa] EPG batch failed (relatedDate=%s, ids=%s): %s",
+                                       related_date, batch, exc)
+                        if consecutive_failures >= _EPG_CIRCUIT_THRESHOLD:
+                            circuit_open = True
+                            logger.error("[vidaa] %d consecutive EPG batch failures — "
+                                         "aborting remaining requests", consecutive_failures)
+                        continue
 
-        if not programs_by_key and (circuit_open or consecutive_failures):
+                    for media in data.get("medias") or []:
+                        cid = media.get("id")
+                        if cid is None:
+                            continue
+                        seen_channel_ids.add(str(cid))
+                        for sched in (media.get("channelInfo") or {}).get("scheduleList") or []:
+                            title = (sched.get("scheduleName") or "").strip()
+                            start_ms, end_ms = sched.get("startTime"), sched.get("endTime")
+                            if not title or not start_ms or not end_ms or end_ms <= start_ms:
+                                continue
+                            sid = sched.get("scheduleId") or start_ms
+                            programs[f"{cid}|{sid}"] = {
+                                "cid": str(cid),
+                                "title": title,
+                                "start": start_ms,
+                                "end": end_ms,
+                                "desc": (sched.get("summary") or "").strip() or None,
+                                "poster": sched.get("recommendPic"),
+                            }
+
+        if not programs and (circuit_open or consecutive_failures):
             raise ScrapeSkipError("Vidaa EPG unavailable: all attempted batches failed")
+        if circuit_open or failed_windows:
+            logger.warning("[vidaa] EPG incomplete (%d window(s) had failures); using what is available",
+                           len(failed_windows))
 
-        covered_ids = {cid for cid, _ in programs_by_key}
+        # Persist only what is real. Advance coverage only through windows that fully succeeded.
+        ok_windows = [rd for rd in related_dates if rd in attempted_windows and rd not in failed_windows]
+        if cache is None:
+            new_covered = max(ok_windows) if (ok_windows and not failed_windows) else 0.0
+        else:
+            new_covered = max([covered_until] + ok_windows) if not failed_windows else covered_until
+        if fetched_any or cache is not None:
+            self._save_epg_cache(full_at, new_covered, set(ids), seen_channel_ids, programs)
+
+        # Real programmes -> ProgramData
+        program_list: dict[tuple[str, str], ProgramData] = {}
+        for k, p in programs.items():
+            start_dt = datetime.fromtimestamp(p["start"] / 1000, tz=UTC)
+            end_dt = datetime.fromtimestamp(p["end"] / 1000, tz=UTC)
+            program_list[(p["cid"], k)] = ProgramData(
+                source_channel_id = p["cid"],
+                title             = p["title"],
+                start_time        = start_dt,
+                end_time          = end_dt,
+                description       = p.get("desc"),
+                poster_url        = p.get("poster"),
+            )
+
+        # Placeholders are regenerated every run and never cached.
+        covered_ids = {cid for cid, _ in program_list}
         name_by_id = {ch.source_channel_id: ch.name for ch in channels}
         placeholder_channels = 0
         for source_channel_id in seen_channel_ids - covered_ids:
@@ -493,7 +604,7 @@ class VidaaScraper(BaseScraper):
             for step in range(_EPG_HORIZON_DAYS * 24):
                 block_start = datetime.fromtimestamp(now + step * 3600, tz=UTC)
                 block_end = block_start + timedelta(hours=1)
-                programs_by_key[(source_channel_id, -1 - step)] = ProgramData(
+                program_list[(source_channel_id, f"ph{step}")] = ProgramData(
                     source_channel_id = source_channel_id,
                     title             = name,
                     start_time        = block_start,
@@ -506,10 +617,9 @@ class VidaaScraper(BaseScraper):
             logger.info("[vidaa] %d channel(s) had no published schedule — filled with placeholder blocks",
                         placeholder_channels)
 
-        programs = list(programs_by_key.values())
-        logger.info("[vidaa] %d EPG programs fetched across %d channels",
-                    len(programs), len(channels))
-        return programs
+        out = list(program_list.values())
+        logger.info("[vidaa] %d EPG programs across %d channels", len(out), len(channels))
+        return out
 
     # -- DRM license bridge -------------------------------------------------
 
@@ -822,6 +932,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-epg", action="store_true", help="Skip EPG generation")
     p.add_argument("--cache-path", default=None,
                    help="DRM param cache path (default: ~/.cache/vidaa_m3u_epg/drm_params.json)")
+    p.add_argument("--full-epg", action="store_true",
+                   help="Ignore the EPG cache and refetch every window (cache is still rewritten)")
     p.add_argument("--license-base", default=None,
                    help="Optional. Base URL of the --serve proxy (e.g. http://192.168.1.5:8765). "
                         "Default: no proxy; license URL + header are baked into the M3U")
@@ -851,6 +963,8 @@ def main(argv: list[str] | None = None) -> int:
     config: dict[str, Any] = {}
     if args.cache_path:
         config["cache_path"] = args.cache_path
+    if args.full_epg:
+        config["epg_full"] = True
     scraper = VidaaScraper(config=config)
 
     if args.serve:
