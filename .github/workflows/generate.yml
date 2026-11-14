@@ -2,7 +2,7 @@ name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + LG + EPG
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       skip_epg:
