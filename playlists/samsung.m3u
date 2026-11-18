@@ -995,6 +995,8 @@ https://jmp2.uk/stvp-USBD1200004NS
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-US1900002QK
+#EXTINF:-1 channel-id="US39000221B" tvg-id="US39000221B" tvg-name="Tales from the Crypt" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US39000221B_20261117T052553SQUARE.png" tvg-chno="3023" tvg-description="Step inside...if you dare. Tales from the Crypt brings you nonstop horror. Discover wicked humor and morbid fun, now uncut & uncensored.",Tales from the Crypt
+https://jmp2.uk/stvp-US39000221B
 #EXTINF:-1 channel-id="US1800014CG" tvg-id="US1800014CG" tvg-name="Alfred Hitchcock Presents" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US1800014CG_20260421T142108SQUARE.png" tvg-chno="3025" tvg-description="This Emmy®-winning anthology series created by Alfred Hitchcock features pulse-pounding and delightfully twisting mysteries!  Enjoy the classic tales from the most beloved name in suspense!",Alfred Hitchcock Presents [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
@@ -1137,6 +1139,8 @@ https://jmp2.uk/stvp-USBC3600013PC
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-US4100025G5
+#EXTINF:-1 channel-id="US3600009PP" tvg-id="US3600009PP" tvg-name="Sesame Street" group-title="Kids" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3600009PP_20261117T052547SQUARE.png" tvg-chno="3616" tvg-description="Join Elmo, Cookie Monster, Abby Cadabby, Grover & friends every day for songs, laughs, stories and learning fun for the whole family.",Sesame Street
+https://jmp2.uk/stvp-US3600009PP
 #EXTINF:-1 channel-id="US17000208H" tvg-id="US17000208H" tvg-name="BABY SHARK TV" group-title="Kids" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US17000208H_20260915T035035SQUARE.png" tvg-chno="3618" tvg-description="It’s Doo-Doo-Doo time with your child to dance to BABY SHARK!  Kids' favorite songs and stories, including nursery rhymes, phonics songs, number songs, bedtime lullabies, children's classics, fairy tales, and more!  The channel is designed to suit a child’s 24-hour daily routine from waking up in the morning to going to school, learning, taking a nap, and going to sleep.",BABY SHARK TV
 https://jmp2.uk/stvp-US17000208H
 #EXTINF:-1 channel-id="US9000032J" tvg-id="US9000032J" tvg-name="Blippi" group-title="Kids" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US9000032J_20260414T005522SQUARE.png" tvg-chno="3619" tvg-description="Join Blippi any time of day to learn, laugh, sing and dance your way through a wonderful world of curiosity. Discover new and exciting episodes today.",Blippi
