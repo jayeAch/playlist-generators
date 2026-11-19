@@ -22,6 +22,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write   # needed to prune old Vidaa caches
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -586,3 +587,13 @@ jobs:
             echo "Push attempt $i failed, retrying…"
             sleep $(( (RANDOM % 8) + 3 ))
           done
+
+      # Every run saves a new cache entry (key includes run_id). Delete all existing
+      # vidaa-drm-* entries here; the post-job cache step then saves the fresh one,
+      # so at most one entry (~3 MB) ever exists instead of 12/day piling up.
+      - name: Prune old Vidaa caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --key vidaa-drm- --limit 100 --json id --jq '.[].id' \
+            | xargs -r -n1 gh cache delete || true
