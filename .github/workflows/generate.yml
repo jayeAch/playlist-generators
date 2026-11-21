@@ -1,4 +1,4 @@
-name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + LG + EPG
+name: Adult Swim + Vidaa + Samsung + Whale + Vizio + Local Now + Xumo + LG + STIRR + EPG
 
 on:
   schedule:
@@ -340,7 +340,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SOURCES: "adultswim vidaa samsung vizio localnow lgtv"
+      SOURCES: "adultswim vidaa samsung vizio localnow lgtv stirr"
       EXTRA_FILES: ""
     steps:
       - name: Checkout
@@ -518,6 +518,24 @@ jobs:
             -v \
             $EXTRA
 
+      - name: Run STIRR scraper
+        if: steps.fresh.outputs.stirr_stale == 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "${{ github.event.inputs.skip_epg }}" = "true" ]; then
+            EXTRA="--no-epg"
+          else
+            EXTRA=""
+          fi
+          python stirr.py \
+            --out-dir playlists \
+            --m3u stirr.m3u \
+            --epg stirr.xml \
+            --workers 8 \
+            -v \
+            $EXTRA
+
       - name: Sanity-check outputs
         run: |
           for src in $SOURCES; do
@@ -555,6 +573,7 @@ jobs:
             [vizio]="${{ steps.fresh.outputs.vizio_stale }}"
             [localnow]="${{ steps.fresh.outputs.localnow_stale }}"
             [lgtv]="${{ steps.fresh.outputs.lgtv_stale }}"
+            [stirr]="${{ steps.fresh.outputs.stirr_stale }}"
           )
           for src in $SOURCES; do
             ch=$(grep -c '^#EXTINF' "playlists/$src.m3u" 2>/dev/null || echo 0)
