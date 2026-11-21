@@ -51,7 +51,9 @@ https://jmp2.uk/stvp-US1700030R0
 https://jmp2.uk/stvp-USBA30002142
 #EXTINF:-1 channel-id="US3300008FX" tvg-id="US3300008FX" tvg-name="The Hill" group-title="News & Opinion" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3300008FX_20260421T133803SQUARE.png" tvg-chno="1190" tvg-description="The Hill TV provides a fresh take on politics from the #1 digital first, political news brand, The Hill.",The Hill
 https://jmp2.uk/stvp-US3300008FX
-#EXTINF:-1 channel-id="USBA3000041ZP" tvg-id="USBA3000041ZP" tvg-name="Movie Hub" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBA3000041ZP_20261109T015430SQUARE.png" tvg-chno="1200" tvg-description="There’s no place like Movie Hub! Your ultimate channel for free movies featuring the biggest Hollywood stars across all your favorite genres.",Movie Hub [DRM]
+#EXTINF:-1 channel-id="USBB5200019FO" tvg-id="USBB5200019FO" tvg-name="Lifetime Holiday Movie Favorites" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB5200019FO_20261120T235924SQUARE.png" tvg-chno="1003" tvg-description="Unwrap it all this season with Lifetime Holiday Movie Favorites, your 24/7 destination for festive movies and holiday cheer.",Lifetime Holiday Movie Favorites
+https://jmp2.uk/stvp-USBB5200019FO
+#EXTINF:-1 channel-id="USBA3000041ZP" tvg-id="USBA3000041ZP" tvg-name="Movie Hub" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBA3000041ZP_20261120T235823SQUARE.png" tvg-chno="1200" tvg-description="There’s no place like Movie Hub! Your ultimate channel for free movies featuring the biggest Hollywood stars across all your favorite genres.",Movie Hub [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
@@ -89,8 +91,6 @@ https://jmp2.uk/stvp-USBD3500033U0
 https://jmp2.uk/stvp-US3600007N4
 #EXTINF:-1 channel-id="USBD270001633" tvg-id="USBD270001633" tvg-name="Hallmark Holiday Favorites" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD270001633_20261102T091123SQUARE.png" tvg-chno="1220" tvg-description="Your cozy corner for festive, feel-good Hallmark holiday favorite movies that uplift your heart and bring non-stop joy all season long",Hallmark Holiday Favorites
 https://jmp2.uk/stvp-USBD270001633
-#EXTINF:-1 channel-id="USBB5200019FO" tvg-id="USBB5200019FO" tvg-name="Lifetime Holiday Movie Favorites" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB5200019FO_20261102T091147SQUARE.png" tvg-chno="1225" tvg-description="Unwrap it all this season with Lifetime Holiday Movie Favorites, your 24/7 destination for festive movies and holiday cheer.",Lifetime Holiday Movie Favorites
-https://jmp2.uk/stvp-USBB5200019FO
 #EXTINF:-1 channel-id="US1600002OK" tvg-id="US1600002OK" tvg-name="Lifetime Movies Love & Drama" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US1600002OK_20260727T081354SQUARE.png" tvg-chno="1226" tvg-description="Welcome to your ultimate escape for feel-good stories that bring everyone together. From laugh-out-loud rom-coms to heartfelt family tales, indulge in juicy movies that stir up all the feels.",Lifetime Movies Love & Drama
 https://jmp2.uk/stvp-US1600002OK
 #EXTINF:-1 channel-id="USBD17000117B" tvg-id="USBD17000117B" tvg-name="MovieSphere" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD17000117B_20241105T024212SQUARE.png" tvg-chno="1230" tvg-description="MovieSphere- Free Movies and TV, 24/7. Enjoy classic tv series and hit movies featuring comedies, thrillers, action and sci-fi all in one place.",MovieSphere
@@ -131,6 +131,12 @@ https://jmp2.uk/stvp-US200001137
 https://jmp2.uk/stvp-US8000024G
 #EXTINF:-1 channel-id="USAJ3000007MT" tvg-id="USAJ3000007MT" tvg-name="Maverick Black Cinema" group-title="Movies" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USAJ3000007MT_20260609T214517SQUARE.png" tvg-chno="1285" tvg-description="The Best in Black Cinema",Maverick Black Cinema
 https://jmp2.uk/stvp-USAJ3000007MT
+#EXTINF:-1 channel-id="US18000078A" tvg-id="US18000078A" tvg-name="Little House on the Prairie" group-title="Western & Classic TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US18000078A_20261120T235929SQUARE.png" tvg-chno="1005" tvg-description="Set in the late 1800's, the Ingalls pack up all of their belongings and venture out west. In this heartwarming drama, watch as this family of five adjust to their new life in a farm on the Great Plains.",Little House on the Prairie [DRM]
+#KODIPROP:inputstream=inputstream.adaptive
+#KODIPROP:inputstream.adaptive.manifest_type=hls
+#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
+#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
+https://jmp2.uk/stvp-US18000078A
 #EXTINF:-1 channel-id="USAK3508709A" tvg-id="USAK3508709A" tvg-name="CINEVAULT: Westerns" group-title="Western & Classic TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USAK3508709A_20261116T193723SQUARE.png" tvg-chno="1405" tvg-description="Kick off your spurs and hitch a ride back to the Old West with CINEVAULT Westerns, featuring iconic, action-packed films from Columbia Pictures.",CINEVAULT: Westerns [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
@@ -165,12 +171,6 @@ https://jmp2.uk/stvp-USBA300035FV
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-US1800010NE
-#EXTINF:-1 channel-id="US18000078A" tvg-id="US18000078A" tvg-name="Little House on the Prairie" group-title="Western & Classic TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US18000078A_20261016T175655SQUARE.png" tvg-chno="1435" tvg-description="Set in the late 1800's, the Ingalls pack up all of their belongings and venture out west. In this heartwarming drama, watch as this family of five adjust to their new life in a farm on the Great Plains.",Little House on the Prairie [DRM]
-#KODIPROP:inputstream=inputstream.adaptive
-#KODIPROP:inputstream.adaptive.manifest_type=hls
-#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
-#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
-https://jmp2.uk/stvp-US18000078A
 #EXTINF:-1 channel-id="USBD1200002PM" tvg-id="USBD1200002PM" tvg-name="get TV" group-title="Western & Classic TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD1200002PM_20260421T134200SQUARE.png" tvg-chno="1455" tvg-description="With a lineup featuring characters audiences know by a single name-Walker, Magnum, Rockford and Kojak, GET is simply Great Entertainment Television.",get TV [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
@@ -181,20 +181,14 @@ https://jmp2.uk/stvp-USBD1200002PM
 https://jmp2.uk/stvp-USBD1200021JM
 #EXTINF:-1 channel-id="US3900008GK" tvg-id="US3900008GK" tvg-name="The Brady Bunch" group-title="Western & Classic TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3900008GK_20260428T032017SQUARE.png" tvg-chno="1468" tvg-description="It's much more than a hunch -- it's The Brady Bunch! Drop in on the lovely ladies and the boys named Brady, now streaming 24/7 on their own dedicated channel.",The Brady Bunch
 https://jmp2.uk/stvp-US3900008GK
-#EXTINF:-1 channel-id="US180001143" tvg-id="US180001143" tvg-name="Las Vegas" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US180001143_20261116T193858SQUARE.png" tvg-chno="1000" tvg-description="A Las Vegas security team tackles crime, cons and murder in this glamorous, addictive procedural starring Josh Duhamel.",Las Vegas [DRM]
-#KODIPROP:inputstream=inputstream.adaptive
-#KODIPROP:inputstream.adaptive.manifest_type=hls
-#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
-#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
-https://jmp2.uk/stvp-US180001143
-#EXTINF:-1 channel-id="US2500008CV" tvg-id="US2500008CV" tvg-name="BET x Tyler Perry Drama" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2500008CV_20261116T193828SQUARE.png" tvg-chno="1002" tvg-description="BET x Tyler Perry Drama - Heavy On The Suspense - Featuring The Latest BET x Tyler Perry Drama Shows: From Sistas To The Oval",BET x Tyler Perry Drama
-https://jmp2.uk/stvp-US2500008CV
-#EXTINF:-1 channel-id="US300068X7" tvg-id="US300068X7" tvg-name="Samsung Television Network" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US300068X7_20261103T171625SQUARE.png" tvg-chno="1005" tvg-description="Always the best, always on. Live sports, hit movies, iconic concerts, award winning shows, late night comedy legends and more - all in one place. Your new favorite channel is streaming free only on Samsung TV Plus.",Samsung Television Network [DRM]
+#EXTINF:-1 channel-id="US300068X7" tvg-id="US300068X7" tvg-name="Samsung Television Network" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US300068X7_20261121T000005SQUARE.png" tvg-chno="1000" tvg-description="Always the best, always on. Live sports, hit movies, iconic concerts, award winning shows, late night comedy legends and more - all in one place. Your new favorite channel is streaming free only on Samsung TV Plus.",Samsung Television Network [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-US300068X7
+#EXTINF:-1 channel-id="US150000550" tvg-id="US150000550" tvg-name="50 Cent Action" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US150000550_20261120T235910SQUARE.png" tvg-chno="1002" tvg-description="50 Cent Action brings you high-octane movies and series, curated by 50 Cent himself, for the ultimate thrill ride.",50 Cent Action
+https://jmp2.uk/stvp-US150000550
 #EXTINF:-1 channel-id="USBB2300001QP" tvg-id="USBB2300001QP" tvg-name="ALL ACTION" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB2300001QP_20260915T194725SQUARE.png" tvg-chno="1505" tvg-description="Take cover and get your heart racing because this is ALL ACTION: dedicated to the best action TV shows.",ALL ACTION [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
@@ -237,12 +231,18 @@ https://jmp2.uk/stvp-USBD300008G1
 https://jmp2.uk/stvp-USBD300022FH
 #EXTINF:-1 channel-id="USBD2500012DH" tvg-id="USBD2500012DH" tvg-name="Ebony TV by Lionsgate" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD2500012DH_20250513T012658SQUARE.png" tvg-chno="1550" tvg-description="EBONY TV by Lionsgate, authentic Black stories told through award-winning films, comedy, and groundbreaking series.",Ebony TV by Lionsgate
 https://jmp2.uk/stvp-USBD2500012DH
+#EXTINF:-1 channel-id="US2500008CV" tvg-id="US2500008CV" tvg-name="BET x Tyler Perry Drama" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2500008CV_20261120T223724SQUARE.png" tvg-chno="1553" tvg-description="BET x Tyler Perry Drama - Heavy On The Suspense - Featuring The Latest BET x Tyler Perry Drama Shows: From Sistas To The Oval",BET x Tyler Perry Drama
+https://jmp2.uk/stvp-US2500008CV
 #EXTINF:-1 channel-id="USBC450000130" tvg-id="USBC450000130" tvg-name="BET Pluto TV" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC450000130_20260421T133852SQUARE.png" tvg-chno="1555" tvg-description="Kick back and enjoy the best of Black Hollywood in movies and TV! Featuring hundreds of hours of beloved films and familiar TV series, this channel is sure to have everything you’ve been looking for in one place, 24 hours a day.",BET Pluto TV
 https://jmp2.uk/stvp-USBC450000130
 #EXTINF:-1 channel-id="USBC1000004G8" tvg-id="USBC1000004G8" tvg-name="Shades of Black" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC1000004G8_20250415T010001SQUARE.png" tvg-chno="1560" tvg-description="Shades of Black is the Black culture, entertainment and lifestyle destination featuring big movies and big stars.",Shades of Black
 https://jmp2.uk/stvp-USBC1000004G8
-#EXTINF:-1 channel-id="US150000550" tvg-id="US150000550" tvg-name="50 Cent Action" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US150000550_20260701T005958SQUARE.png" tvg-chno="1561" tvg-description="50 Cent Action brings you high-octane movies and series, curated by 50 Cent himself, for the ultimate thrill ride.",50 Cent Action
-https://jmp2.uk/stvp-US150000550
+#EXTINF:-1 channel-id="US180001143" tvg-id="US180001143" tvg-name="Las Vegas" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US180001143_20261120T223752SQUARE.png" tvg-chno="1562" tvg-description="A Las Vegas security team tackles crime, cons and murder in this glamorous, addictive procedural starring Josh Duhamel.",Las Vegas [DRM]
+#KODIPROP:inputstream=inputstream.adaptive
+#KODIPROP:inputstream.adaptive.manifest_type=hls
+#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
+#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
+https://jmp2.uk/stvp-US180001143
 #EXTINF:-1 channel-id="US3000006DF" tvg-id="US3000006DF" tvg-name="HerSphere by Lionsgate" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3000006DF_20260528T042006SQUARE.png" tvg-chno="1563" tvg-description="The ultimate channel to stream empowering, enjoyable, and always entertaining female-driven TV series and movies.",HerSphere by Lionsgate
 https://jmp2.uk/stvp-US3000006DF
 #EXTINF:-1 channel-id="US19000072T" tvg-id="US19000072T" tvg-name="Nashville" group-title="Action & Drama" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US19000072T_20260825T040243SQUARE.png" tvg-chno="1564" tvg-description="A country legend tries to resurrect her career, while battling a younger singer for the spotlight.",Nashville [DRM]
@@ -409,7 +409,7 @@ https://jmp2.uk/stvp-US46000120T
 https://jmp2.uk/stvp-USAK3508710A
 #EXTINF:-1 channel-id="USBA34000049Z" tvg-id="USBA34000049Z" tvg-name="Court TV" group-title="Crime" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBA34000049Z_20260825T035901SQUARE.png" tvg-chno="1892" tvg-description="Court TV is the premiere legal news network, devoted to live gavel-to-gavel coverage, in-depth legal reporting and expert analysis of the nation’s most compelling trials.",Court TV
 https://jmp2.uk/stvp-USBA34000049Z
-#EXTINF:-1 channel-id="US1900023QQ" tvg-id="US1900023QQ" tvg-name="A&E Alaska State Troopers" group-title="Reality TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US1900023QQ_20261116T193813SQUARE.png" tvg-chno="1003" tvg-description="Ride along as troopers patrol vast, unforgiving terrain to keep the streets safe.",A&E Alaska State Troopers
+#EXTINF:-1 channel-id="US1900023QQ" tvg-id="US1900023QQ" tvg-name="A&E Alaska State Troopers" group-title="Reality TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US1900023QQ_20261120T223718SQUARE.png" tvg-chno="1830" tvg-description="Ride along as troopers patrol vast, unforgiving terrain to keep the streets safe.",A&E Alaska State Troopers
 https://jmp2.uk/stvp-US1900023QQ
 #EXTINF:-1 channel-id="USBB4400016F9" tvg-id="USBB4400016F9" tvg-name="All-Out Reality" group-title="Reality TV" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB4400016F9_20260901T055730SQUARE.png" tvg-chno="1904" tvg-description="Feed your guilty pleasures and binge a variety of reality shows on All-Out Reality.",All-Out Reality
 https://jmp2.uk/stvp-USBB4400016F9
@@ -549,7 +549,7 @@ https://jmp2.uk/stvp-US2000017HT
 https://jmp2.uk/stvp-USBC600017FG
 #EXTINF:-1 channel-id="USBC6000108Z" tvg-id="USBC6000108Z" tvg-name="BBC Food" group-title="Home & Food" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC6000108Z_20260421T143120SQUARE.png" tvg-chno="2100" tvg-description="Step into the kitchen with some of the finest chefs in the British Isles, including Nigella Lawson, Jamie Oliver, Rachel Allen, and more, where something wonderful is always cooking.",BBC Food
 https://jmp2.uk/stvp-USBC6000108Z
-#EXTINF:-1 channel-id="USBC1300008AZ" tvg-id="USBC1300008AZ" tvg-name="Plated" group-title="Home & Food" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC1300008AZ_20261001T230719SQUARE.png" tvg-chno="2105" tvg-description="Before it’s plated, the dish has to be created, tasted, and served, but perfection doesn't come easy. Watch top chefs including Gordon Ramsay, chop, sauté, bake and flambé their way to the perfect plate.",Plated [DRM]
+#EXTINF:-1 channel-id="USBC1300008AZ" tvg-id="USBC1300008AZ" tvg-name="Plated" group-title="Home & Food" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC1300008AZ_20261120T235846SQUARE.png" tvg-chno="2105" tvg-description="Before it’s plated, the dish has to be created, tasted, and served, but perfection doesn't come easy. Watch top chefs including Gordon Ramsay, chop, sauté, bake and flambé their way to the perfect plate.",Plated [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
@@ -593,8 +593,10 @@ https://jmp2.uk/stvp-USBC4400005HY
 https://jmp2.uk/stvp-US2600023WY
 #EXTINF:-1 channel-id="US4900004KP" tvg-id="US4900004KP" tvg-name="Amazon Live" group-title="Home & Food" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US4900004KP_20260428T032005SQUARE.png" tvg-chno="2155" tvg-description="Amazon Live is a shoppable channel that offers a unique interactive shopping experience featuring the best Amazon deals, original shows, and celebrity live streams. Watch, chat live, and Shop the Show for something new every day!",Amazon Live
 https://jmp2.uk/stvp-US4900004KP
-#EXTINF:-1 channel-id="US2600007WJ" tvg-id="US2600007WJ" tvg-name="NFL Channel" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2600007WJ_20261002T182011SQUARE.png" tvg-chno="2310" tvg-description="Get 24/7, always-on access to NFL content on NFL Channel! The NFL Channel features Live Game Day Coverage, NFL Game Replays, Original Shows, Emmy-Award winning series and more, available FREE!",NFL Channel
+#EXTINF:-1 channel-id="US2600007WJ" tvg-id="US2600007WJ" tvg-name="NFL Channel" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2600007WJ_20261120T235948SQUARE.png" tvg-chno="1001" tvg-description="Get 24/7, always-on access to NFL content on NFL Channel! The NFL Channel features Live Game Day Coverage, NFL Game Replays, Original Shows, Emmy-Award winning series and more, available FREE!",NFL Channel
 https://jmp2.uk/stvp-US2600007WJ
+#EXTINF:-1 channel-id="US100000704" tvg-id="US100000704" tvg-name="CBS Sports Golazo Network" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US100000704_20261120T235917SQUARE.png" tvg-chno="1004" tvg-description="CBS Sports Golazo Network is the year-round, 24/7 home for soccer fans with free matches, highlights, news and analysis.",CBS Sports Golazo Network
+https://jmp2.uk/stvp-US100000704
 #EXTINF:-1 channel-id="US1400001WV" tvg-id="US1400001WV" tvg-name="MLB Channel" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US1400001WV_20261016T224647SQUARE.png" tvg-chno="2315" tvg-description="MLB is home to all-time classic games and MLB documentaries, plus your favorite baseball shows including Play Ball, Baseball's Seasons, This Week in Baseball and more.",MLB Channel
 https://jmp2.uk/stvp-US1400001WV
 #EXTINF:-1 channel-id="US4100032W9" tvg-id="US4100032W9" tvg-name="MiLB" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US4100032W9_20260421T143026SQUARE.png" tvg-chno="2316" tvg-description="Watch the future of baseball today. Stream the best Minor League Baseball games featuring top prospects and MLB stars on rehab assignments. See tomorrow's superstars before they reach the big leagues, on the MiLB Channel.",MiLB
@@ -607,8 +609,6 @@ https://jmp2.uk/stvp-US300062TG
 https://jmp2.uk/stvp-US4700001B4
 #EXTINF:-1 channel-id="USBB4800005VO" tvg-id="USBB4800005VO" tvg-name="CBS Sports HQ" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB4800005VO_20260922T055647SQUARE.png" tvg-chno="2330" tvg-description="We are a 24/7 Sports Network delivering everything that matters most to sports fans. From breaking news updates, to instant game reactions and betting advice, CBS Sports HQ is the ultimate destination for all things, well...SPORTS!",CBS Sports HQ
 https://jmp2.uk/stvp-USBB4800005VO
-#EXTINF:-1 channel-id="US100000704" tvg-id="US100000704" tvg-name="CBS Sports Golazo Network" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US100000704_20260701T010049SQUARE.png" tvg-chno="2331" tvg-description="CBS Sports Golazo Network is the year-round, 24/7 home for soccer fans with free matches, highlights, news and analysis.",CBS Sports Golazo Network
-https://jmp2.uk/stvp-US100000704
 #EXTINF:-1 channel-id="US2700001QY" tvg-id="US2700001QY" tvg-name="FOX Sports" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2700001QY_20260421T143236SQUARE.png" tvg-chno="2334" tvg-description="Backed by the power of the FOX Sports brand, the FOX Sports FAST Channel includes FS1 studio show clips, gripping documentaries and captivating podcasts, featuring well-known FOX Sports talent and media personalities.",FOX Sports
 https://jmp2.uk/stvp-US2700001QY
 #EXTINF:-1 channel-id="USBD420002446" tvg-id="USBD420002446" tvg-name="NBC Sports NOW" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD420002446_20250729T010447SQUARE.png" tvg-chno="2338" tvg-description="NBC Sports NOW offers free daily sports talk, live events and highlights. Watch Dan Patrick, Mike Florio, Dan Le Batard, Matthew Berry and Chris Simms cover the biggest stories on and off the field.",NBC Sports NOW
@@ -695,7 +695,7 @@ https://jmp2.uk/stvp-USBD1700009P5
 https://jmp2.uk/stvp-US18000206C
 #EXTINF:-1 channel-id="USBB10000058A" tvg-id="USBB10000058A" tvg-name="SURFER TV" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB10000058A_20250826T234505SQUARE.png" tvg-chno="2480" tvg-description="Blends soulful storytelling, competition coverage and a deep connection to the culture, music, and environment that unite the global surf community. Whether you paddle out daily or dream of the perfect wave, it brings the ocean 24/7.",SURFER TV
 https://jmp2.uk/stvp-USBB10000058A
-#EXTINF:-1 channel-id="US21000043S" tvg-id="US21000043S" tvg-name="MeatEater" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US21000043S_20250909T002823SQUARE.png" tvg-chno="2481" tvg-description="Founded by Steven Rinella, MeatEater creates top content on hunting, fishing, and the outdoors.",MeatEater
+#EXTINF:-1 channel-id="US21000043S" tvg-id="US21000043S" tvg-name="MeatEater" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US21000043S_20261120T235940SQUARE.png" tvg-chno="2481" tvg-description="Founded by Steven Rinella, MeatEater creates top content on hunting, fishing, and the outdoors.",MeatEater
 https://jmp2.uk/stvp-US21000043S
 #EXTINF:-1 channel-id="US4400001PL" tvg-id="US4400001PL" tvg-name="Game & Fish TV" group-title="Sports & Outdoors" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US4400001PL_20260421T143033SQUARE.png" tvg-chno="2483" tvg-description="Game & Fish TV celebrates the great outdoors and the great world of sports with inspiring hunting, angling, game cooking, and adventurers with insightful coverage and behind-the-scenes stories of legendary experts, athletes, and coaches.",Game & Fish TV
 https://jmp2.uk/stvp-US4400001PL
@@ -843,7 +843,7 @@ https://jmp2.uk/stvp-USAJ3504706A
 https://jmp2.uk/stvp-USBB2900002Z7
 #EXTINF:-1 channel-id="USBD1700006T2" tvg-id="USBD1700006T2" tvg-name="Storage Wars: LA" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD1700006T2_20261002T182019SQUARE.png" tvg-chno="2712" tvg-description="Pros have a chance to strike it rich with left behind treasures – or to wind up with nothing but junk.",Storage Wars: LA
 https://jmp2.uk/stvp-USBD1700006T2
-#EXTINF:-1 channel-id="US300003S3" tvg-id="US300003S3" tvg-name="Pawn Stars" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US300003S3_20261023T182425SQUARE.png" tvg-chno="2714" tvg-description="Pawn Stars by History invites you to join three generations of the Harrison family as they assess the value of items at their pawn shop in Las Vegas. You never know who or what will show up at their door!",Pawn Stars
+#EXTINF:-1 channel-id="US300003S3" tvg-id="US300003S3" tvg-name="Pawn Stars" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US300003S3_20261120T235955SQUARE.png" tvg-chno="2714" tvg-description="Pawn Stars by History invites you to join three generations of the Harrison family as they assess the value of items at their pawn shop in Las Vegas. You never know who or what will show up at their door!",Pawn Stars
 https://jmp2.uk/stvp-US300003S3
 #EXTINF:-1 channel-id="USBB4400018LR" tvg-id="USBB4400018LR" tvg-name="Wipeout Xtra" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB4400018LR_20241014T232200SQUARE.png" tvg-chno="2716" tvg-description="The home of physical and exciting gameshows including Wipeout, where you can witness unexpected challenges.",Wipeout Xtra
 https://jmp2.uk/stvp-USBB4400018LR
@@ -859,7 +859,7 @@ https://jmp2.uk/stvp-USBB2300002Q6
 https://jmp2.uk/stvp-USBB3500001O6
 #EXTINF:-1 channel-id="US3900014MX" tvg-id="US3900014MX" tvg-name="Survivor" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3900014MX_20260602T091535SQUARE.png" tvg-chno="2724" tvg-description="The reality competition series that revolutionized TV is now streaming 24/7 on Pluto TV. Relive the challenges, the alliances, and the Tribal Councils that made the show a phenomenon.",Survivor
 https://jmp2.uk/stvp-US3900014MX
-#EXTINF:-1 channel-id="US390001557" tvg-id="US390001557" tvg-name="The Amazing Race" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US390001557_20260528T041751SQUARE.png" tvg-chno="2725" tvg-description="Winner of 10 Emmy Awards for Outstanding Reality-Competition Program, The Amazing Race has circled the globe and landed on Pluto TV. Grab a partner, pack a bag, and get ready to run any time of day.",The Amazing Race
+#EXTINF:-1 channel-id="US390001557" tvg-id="US390001557" tvg-name="The Amazing Race" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US390001557_20261121T000238SQUARE.png" tvg-chno="2725" tvg-description="Winner of 10 Emmy Awards for Outstanding Reality-Competition Program, The Amazing Race has circled the globe and landed on Pluto TV. Grab a partner, pack a bag, and get ready to run any time of day.",The Amazing Race
 https://jmp2.uk/stvp-US390001557
 #EXTINF:-1 channel-id="US3500006VF" tvg-id="US3500006VF" tvg-name="America's Got Talent" group-title="Reality Competition" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3500006VF_20251219T231953SQUARE.png" tvg-chno="2727" tvg-description="Relive 20 years of AGT’s epic acts, wild auditions & thrilling performances all in one nonstop place!",America's Got Talent
 https://jmp2.uk/stvp-US3500006VF
@@ -969,18 +969,18 @@ https://jmp2.uk/stvp-USBC2400015DO
 https://jmp2.uk/stvp-USBD70000213
 #EXTINF:-1 channel-id="US3900006GL" tvg-id="US3900006GL" tvg-name="Dr. Phil Envoy" group-title="Lifestyle & Pop Culture" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US3900006GL_20260915T035048SQUARE.png" tvg-chno="2977" tvg-description="Home to Dr. Phil, with brand new original series and programming built on truth, context, and conversation that matters.",Dr. Phil Envoy
 https://jmp2.uk/stvp-US3900006GL
-#EXTINF:-1 channel-id="US39000218V" tvg-id="US39000218V" tvg-name="Ghost Hunters" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US39000218V_20261116T193851SQUARE.png" tvg-chno="1001" tvg-description="Jason Hawes and his team of paranormal investigators, TAPS (The Atlantic Paranormal Society), cross North America searching for answers in the most haunted locations.",Ghost Hunters [DRM]
-#KODIPROP:inputstream=inputstream.adaptive
-#KODIPROP:inputstream.adaptive.manifest_type=hls
-#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
-#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
-https://jmp2.uk/stvp-US39000218V
 #EXTINF:-1 channel-id="USBC1300012VK" tvg-id="USBC1300012VK" tvg-name="Fear Zone" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC1300012VK_20260707T035838SQUARE.png" tvg-chno="3005" tvg-description="Your gateway to the chilling world of all things scary and unexplained! Prepare to be terrified with a 24/7 channel that delves into the root of all your fears.",Fear Zone [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-USBC1300012VK
+#EXTINF:-1 channel-id="US39000218V" tvg-id="US39000218V" tvg-name="Ghost Hunters" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US39000218V_20261120T223745SQUARE.png" tvg-chno="3009" tvg-description="Jason Hawes and his team of paranormal investigators, TAPS (The Atlantic Paranormal Society), cross North America searching for answers in the most haunted locations.",Ghost Hunters [DRM]
+#KODIPROP:inputstream=inputstream.adaptive
+#KODIPROP:inputstream.adaptive.manifest_type=hls
+#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
+#KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
+https://jmp2.uk/stvp-US39000218V
 #EXTINF:-1 channel-id="USBB5200028MM" tvg-id="USBB5200028MM" tvg-name="Mysteries Xplored" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBB5200028MM_20260120T230343SQUARE.png" tvg-chno="3010" tvg-description="Experience the world's greatest mysteries with some of the world’s greatest experts. William Shatner, Laurence Fishburne, Zachary Quinto, Giorgio A. Tsoukalos, the Lagina brothers and more take you on a 24/7 journey to uncover the truth.",Mysteries Xplored
 https://jmp2.uk/stvp-USBB5200028MM
 #EXTINF:-1 channel-id="US200111SU" tvg-id="US200111SU" tvg-name="Van Helsing" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US200111SU_20260421T141942SQUARE.png" tvg-chno="3013" tvg-description="Another chapter in the story, tune into this 24/7 following a descendant of the Van Helsing warrior lineage, Vanessa Helsing a she leads mankind against vampires.",Van Helsing
@@ -1025,14 +1025,14 @@ https://jmp2.uk/stvp-USAJ17000014C
 https://jmp2.uk/stvp-USBC100001175
 #EXTINF:-1 channel-id="USBD700015LK" tvg-id="USBD700015LK" tvg-name="Midnight Pulp" group-title="Sci-Fi & Horror" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBD700015LK_20241112T000919SQUARE.png" tvg-chno="3080" tvg-description="Want to watch something strange?  Midnight Pulp is the place to find crazy action, hysterical horror, out-of-this-world sci-fi, offbeat docs, and much more!  Let your freak flag fly 24/7 on Midnight Pulp!",Midnight Pulp
 https://jmp2.uk/stvp-USBD700015LK
-#EXTINF:-1 channel-id="US2000018YI" tvg-id="US2000018YI" tvg-name="Crunchyroll" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2000018YI_20261116T193835SQUARE.png" tvg-chno="1004" tvg-description="Crunchyroll, home of the World’s Largest Anime Library, presents a 24/7 free channel offering a wealth of anime delights. Discover critically acclaimed series, beloved fan favorites, recent hits, and more!",Crunchyroll [DRM]
+#EXTINF:-1 channel-id="US11000020V" tvg-id="US11000020V" tvg-name="It’s Anime" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US11000020V_20260609T035031SQUARE.png" tvg-chno="3202" tvg-description="'It's Anime' is a premium anime channel where you can enjoy everything from the latest ongoing series to a vast library of past classics! It brings the best of Japanese animation anytime, all free to you.",It’s Anime
+https://jmp2.uk/stvp-US11000020V
+#EXTINF:-1 channel-id="US2000018YI" tvg-id="US2000018YI" tvg-name="Crunchyroll" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US2000018YI_20261120T223736SQUARE.png" tvg-chno="3203" tvg-description="Crunchyroll, home of the World’s Largest Anime Library, presents a 24/7 free channel offering a wealth of anime delights. Discover critically acclaimed series, beloved fan favorites, recent hits, and more!",Crunchyroll [DRM]
 #KODIPROP:inputstream=inputstream.adaptive
 #KODIPROP:inputstream.adaptive.manifest_type=hls
 #KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha
 #KODIPROP:inputstream.adaptive.license_key=https://d54or4x1qhv8g.cloudfront.net/drm/v3/license?drm-type=widevine||R{SSM}|
 https://jmp2.uk/stvp-US2000018YI
-#EXTINF:-1 channel-id="US11000020V" tvg-id="US11000020V" tvg-name="It’s Anime" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/US11000020V_20260609T035031SQUARE.png" tvg-chno="3202" tvg-description="'It's Anime' is a premium anime channel where you can enjoy everything from the latest ongoing series to a vast library of past classics! It brings the best of Japanese animation anytime, all free to you.",It’s Anime
-https://jmp2.uk/stvp-US11000020V
 #EXTINF:-1 channel-id="USAJ3504502A" tvg-id="USAJ3504502A" tvg-name="Anime All day" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USAJ3504502A_20260421T141927SQUARE.png" tvg-chno="3205" tvg-description="Welcome to Anime All Day, where you can watch all kinds of anime from your favorite classics to today’s biggest hits. Catch up on your favorite series or jump into a new adventure with Anime All Day.",Anime All day
 https://jmp2.uk/stvp-USAJ3504502A
 #EXTINF:-1 channel-id="USBC36000073J" tvg-id="USBC36000073J" tvg-name="RetroCrush" group-title="Anime & Gaming" tvg-logo="https://tvpnlogopus.samsungcloud.tv/platform/image/sourcelogo/vc/00/02/34/USBC36000073J_20250701T224525SQUARE.png" tvg-chno="3207" tvg-description="RetroCrush is a fresh streaming destination for everything classic anime. Watch iconic anime moments and discuss unforgettable characters that took anime from subculture to global phenomenon.",RetroCrush
